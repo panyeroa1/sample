@@ -4,7 +4,7 @@
 
 import { Type } from '@google/genai';
 import { AgentIcon, ChatIcon, HistoryIcon, SoundWaveIcon, SpeakerIcon, DatabaseIcon, UploadIcon } from './components/icons';
-import { ActiveView, CrmBooking, Template, Agent } from './types';
+import { ActiveView, CrmBooking, Agent } from './types';
 import { crmService } from './services/crmService';
 
 /* ===========================
@@ -677,21 +677,6 @@ Even in the most difficult situations — such as unresolved technical issues, p
 **Final Check:** Before disconnecting, Ayla must always deliver a complete, polite closing sentence. Silence is not an option.
 
 ---`;
-
-/* ===========================
- * TEMPLATE
- * =========================== */
-export const MOCK_TEMPLATES: Template[] = [
-  {
-    id: 'template-ayla-web-agent',
-    name: 'Ayla - Web Agent Demo',
-    description: 'A pre-configured web agent template using the Ayla persona from Turkish Airlines. Ideal for customer service demos, this template sets the system prompt, first sentence, and recommended voice.',
-    useCases: ['Web Agent Demo', 'Customer Service', 'Voice AI', 'Call Center'],
-    systemPrompt: AYLA_MULTILINGUAL_PROMPT,
-    firstSentence: "<speak><p>Thank you for calling Turkish Airlines. My name is Ayla. How may I assist you today?</p></speak>",
-    recommendedVoice: 'Eburon Ayla',
-  }
-];
 
 /* ===========================
  * EBURON SYSTEM PROMPT

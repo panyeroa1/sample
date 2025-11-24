@@ -32,7 +32,6 @@ export const CenterPanel: React.FC<CenterPanelProps> = ({
     [ActiveView.TTSStudio]: "TTS Studio",
     [ActiveView.Chatbot]: "AI Assistant",
     [ActiveView.History]: "Call History",
-    [ActiveView.WebDemo]: "Web Demo",
   }
 
   const renderContent = () => {

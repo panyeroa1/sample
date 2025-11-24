@@ -1,7 +1,7 @@
-import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, Feedback, AgentFeedback } from '../types';
+import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, Feedback, AgentFeedback, CrmBooking } from '../types';
 
 const DB_NAME = 'EburonStudioDB';
-const DB_VERSION = 3; // Incremented version for schema change
+const DB_VERSION = 4; // Incremented version for schema change
 const AGENTS_STORE = 'agents';
 const VOICES_STORE = 'voices';
 const CALL_LOGS_STORE = 'call_logs';
@@ -9,6 +9,7 @@ const TTS_GENERATIONS_STORE = 'tts_generations';
 const CHATBOT_MESSAGES_STORE = 'chatbot_messages';
 const FEEDBACK_STORE = 'feedback';
 const AGENT_FEEDBACK_STORE = 'agent_feedback';
+const CRM_BOOKINGS_STORE = 'crm_bookings';
 
 
 let db: IDBDatabase | null = null;
@@ -43,6 +44,9 @@ const openDB = (): Promise<IDBDatabase> => {
             }
             if (!tempDb.objectStoreNames.contains(AGENT_FEEDBACK_STORE)) {
                 tempDb.createObjectStore(AGENT_FEEDBACK_STORE, { keyPath: 'id' });
+            }
+            if (!tempDb.objectStoreNames.contains(CRM_BOOKINGS_STORE)) {
+                tempDb.createObjectStore(CRM_BOOKINGS_STORE, { keyPath: 'pnr' });
             }
         };
 
@@ -165,3 +169,9 @@ export const upsertFeedbackToIdb = (feedback: Feedback[]): Promise<void> => upse
 
 // AGENT FEEDBACK
 export const upsertAgentFeedbackToIdb = (feedback: AgentFeedback[]): Promise<void> => upsertAll<AgentFeedback>(AGENT_FEEDBACK_STORE, feedback);
+
+// CRM BOOKINGS
+export const getCrmBookingsFromIdb = (): Promise<CrmBooking[]> => getAll<CrmBooking>(CRM_BOOKINGS_STORE);
+export const upsertCrmBookingsToIdb = (bookings: CrmBooking[]): Promise<void> => upsertAll<CrmBooking>(CRM_BOOKINGS_STORE, bookings);
+export const deleteCrmBookingFromIdb = (pnr: string): Promise<void> => deleteItem(CRM_BOOKINGS_STORE, pnr);
+export const clearCrmBookingsFromIdb = (): Promise<void> => clearStore(CRM_BOOKINGS_STORE);

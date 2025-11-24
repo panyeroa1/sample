@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as dataService from '../services/dataService';
 import { TtsGeneration } from '../types';
 import { DownloadIcon, SoundWaveIcon, HistoryIcon } from './icons';
@@ -56,15 +56,27 @@ const TTSStudioView: React.FC = () => {
     const [generatedAudio, setGeneratedAudio] = useState<{ url: string, blob: Blob } | null>(null);
     const [history, setHistory] = useState<TtsGeneration[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+    const [historyError, setHistoryError] = useState<string | null>(null);
     
     const [selectedVoice, setSelectedVoice] = useState<string>(GEMINI_VOICES_WITH_ALIASES[0].id);
 
     const [activeTab, setActiveTab] = useState<ActiveTab>('generator');
 
     useEffect(() => {
-        // History is now session-only to avoid using expired blob URLs from IndexedDB.
-        // It will be empty on each page load.
-        setIsLoadingHistory(false);
+        const loadHistory = async () => {
+            setIsLoadingHistory(true);
+            setHistoryError(null);
+            try {
+                const storedHistory = await dataService.getTtsGenerations();
+                setHistory(storedHistory);
+            } catch (err: any) {
+                console.error("Failed to load TTS history:", err);
+                setHistoryError(err.message || 'Unable to load TTS history right now.');
+            } finally {
+                setIsLoadingHistory(false);
+            }
+        };
+        loadHistory();
     }, []);
 
     const handleGenerate = async () => {
@@ -79,20 +91,10 @@ const TTSStudioView: React.FC = () => {
         
         try {
             const audioBlob = await dataService.generateTtsWithGemini(inputText, selectedVoice);
+            const savedGeneration = await dataService.saveTtsGeneration(inputText, audioBlob);
 
-            // Create a local blob URL instead of uploading.
-            const localUrl = URL.createObjectURL(audioBlob);
-
-            // Create a history item just for the current session's state.
-            const newGeneration: TtsGeneration = {
-                id: `local-${Date.now()}`,
-                created_at: new Date().toISOString(),
-                input_text: inputText,
-                audio_url: localUrl,
-            };
-
-            setGeneratedAudio({ url: localUrl, blob: audioBlob });
-            setHistory(prev => [newGeneration, ...prev]);
+            setGeneratedAudio({ url: savedGeneration.audio_url, blob: audioBlob });
+            setHistory(prev => [savedGeneration, ...prev]);
             setStatus('success');
 
         } catch (err: any) {
@@ -168,6 +170,11 @@ const TTSStudioView: React.FC = () => {
 
     const renderHistory = () => (
         <>
+            {historyError && (
+                <div className="mb-3 p-3 rounded-lg bg-red-900/40 border border-red-700 text-red-200 text-sm">
+                    {historyError}
+                </div>
+            )}
             {isLoadingHistory ? (
                 <LoadingIndicator text="Loading History" size="small" />
             ) : history.length === 0 ? (

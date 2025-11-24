@@ -300,9 +300,20 @@ export async function loadCallLogsFromCSV(): Promise<CallLog[]> {
 
 
 export async function getCallLogs(): Promise<CallLog[]> {
-    let logs = await idbService.getCallLogsFromIdb();
-    if (logs && logs.length > 0) {
-        return logs;
+    if (dbMode === 'supabase') {
+        try {
+            const supabaseLogs = await supabaseService.getCallLogsFromSupabase();
+            await idbService.upsertCallLogsToIdb(supabaseLogs);
+            return supabaseLogs;
+        } catch (error) {
+            console.error("Supabase failed to get call logs, falling back to offline cache", (error as Error).message);
+            dbMode = 'indexedDB';
+        }
+    }
+
+    const cachedLogs = await idbService.getCallLogsFromIdb();
+    if (cachedLogs && cachedLogs.length > 0) {
+        return cachedLogs;
     }
     
     try {
@@ -348,17 +359,41 @@ export async function clearCallLogs(): Promise<void> {
 
 // --- TTS GENERATIONS ---
 export async function getTtsGenerations(): Promise<TtsGeneration[]> {
+    if (dbMode === 'supabase') {
+        try {
+            const generations = await supabaseService.getTtsGenerations();
+            await idbService.upsertTtsGenerationsToIdb(generations);
+            return generations;
+        } catch (error) {
+            console.error("Supabase failed to get TTS generations, falling back to IndexedDB", (error as Error).message);
+            dbMode = 'indexedDB';
+        }
+    }
     return idbService.getTtsGenerationsFromIdb();
 }
 
-export async function saveTtsGeneration(generationData: {
-    input_text: string;
-    audio_url: string;
-}): Promise<TtsGeneration> {
+export async function saveTtsGeneration(inputText: string, audioBlob: Blob): Promise<TtsGeneration> {
+    if (dbMode === 'supabase') {
+        try {
+            const audioUrl = await supabaseService.uploadTtsAudio(audioBlob);
+            const saved = await supabaseService.saveTtsGeneration({
+                input_text: inputText,
+                audio_url: audioUrl,
+            });
+            await idbService.upsertTtsGenerationsToIdb([saved]);
+            return saved;
+        } catch (error) {
+            console.error("Supabase failed to store TTS generation, using local cache instead", (error as Error).message);
+            dbMode = 'indexedDB';
+        }
+    }
+
+    const localUrl = URL.createObjectURL(audioBlob);
     const newGeneration: TtsGeneration = {
-        ...generationData,
         id: `local-${Date.now()}`,
         created_at: new Date().toISOString(),
+        input_text: inputText,
+        audio_url: localUrl,
     };
     await idbService.upsertTtsGenerationsToIdb([newGeneration]);
     return newGeneration;
@@ -366,15 +401,39 @@ export async function saveTtsGeneration(generationData: {
 
 // --- CHATBOT MESSAGES ---
 export async function getChatbotMessages(): Promise<ChatMessage[]> {
+    if (dbMode === 'supabase') {
+        try {
+            const messages = await supabaseService.getChatbotMessagesFromSupabase();
+            await idbService.upsertChatbotMessagesToIdb(messages);
+            return messages;
+        } catch (error) {
+            console.error("Supabase failed to get chatbot messages, falling back to IndexedDB", (error as Error).message);
+            dbMode = 'indexedDB';
+        }
+    }
     return idbService.getChatbotMessagesFromIdb();
 }
 
 export async function saveChatMessage(message: ChatMessage): Promise<void> {
     await idbService.upsertChatbotMessagesToIdb([message]);
+    if (dbMode === 'supabase') {
+        try {
+            await supabaseService.upsertChatbotMessageToSupabase(message);
+        } catch (error) {
+            console.error("Supabase failed to save chatbot message", (error as Error).message);
+        }
+    }
 }
 
 export async function clearChatbotMessages(): Promise<void> {
     await idbService.clearChatbotMessagesFromIdb();
+    if (dbMode === 'supabase') {
+        try {
+            await supabaseService.clearChatbotMessagesFromSupabase();
+        } catch (error) {
+            console.error("Supabase failed to clear chatbot messages", (error as Error).message);
+        }
+    }
 }
 
 // --- FEEDBACK ---
@@ -412,17 +471,63 @@ export async function submitAgentFeedback(
 
 // --- CRM DATA ---
 export async function getCrmBookings(): Promise<CrmBooking[]> {
-    return crmService.getBookings();
+    if (dbMode === 'supabase') {
+        try {
+            const bookings = await supabaseService.getCrmBookingsFromSupabase();
+            await idbService.upsertCrmBookingsToIdb(bookings);
+            crmService.setBookings(bookings);
+            return bookings;
+        } catch (error) {
+            console.error("Supabase failed to load CRM bookings, falling back to offline cache", (error as Error).message);
+            dbMode = 'indexedDB';
+        }
+    }
+
+    const cachedBookings = await idbService.getCrmBookingsFromIdb();
+    if (cachedBookings.length > 0) {
+        crmService.setBookings(cachedBookings);
+        return cachedBookings;
+    }
+
+    const seeded = crmService.getBookings();
+    await idbService.upsertCrmBookingsToIdb(seeded);
+    return seeded;
 }
 
 export async function createCrmBooking(booking: CrmBooking): Promise<CrmBooking> {
-    return crmService.addBooking(booking);
+    const newBooking = crmService.addBooking(booking);
+    await idbService.upsertCrmBookingsToIdb([newBooking]);
+    if (dbMode === 'supabase') {
+        try {
+            await supabaseService.upsertCrmBookingToSupabase(newBooking);
+        } catch (error) {
+            console.error("Supabase failed to create CRM booking", (error as Error).message);
+        }
+    }
+    return newBooking;
 }
 
 export async function updateCrmBooking(pnr: string, updates: Partial<CrmBooking>): Promise<CrmBooking> {
-    return crmService.updateBooking(pnr, updates);
+    const updatedBooking = crmService.updateBooking(pnr, updates);
+    await idbService.upsertCrmBookingsToIdb([updatedBooking]);
+    if (dbMode === 'supabase') {
+        try {
+            await supabaseService.upsertCrmBookingToSupabase(updatedBooking);
+        } catch (error) {
+            console.error("Supabase failed to update CRM booking", (error as Error).message);
+        }
+    }
+    return updatedBooking;
 }
 
 export async function deleteCrmBooking(pnr: string): Promise<void> {
-    return crmService.deleteBooking(pnr);
+    crmService.deleteBooking(pnr);
+    await idbService.deleteCrmBookingFromIdb(pnr);
+    if (dbMode === 'supabase') {
+        try {
+            await supabaseService.deleteCrmBookingFromSupabase(pnr);
+        } catch (error) {
+            console.error("Supabase failed to delete CRM booking", (error as Error).message);
+        }
+    }
 }

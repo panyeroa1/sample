@@ -1,9 +1,9 @@
 // FIX: Corrected React import to include necessary hooks and components.
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LeftSidebar } from './components/LeftSidebar';
 import { CenterPanel } from './components/CenterPanel';
 import { RightSidebar } from './components/RightSidebar';
-import { ActiveView, Template } from './types';
+import { ActiveView } from './types';
 import { initializeDataLayer } from './services/dataService';
 import { LoadingIndicator } from './components/LoadingIndicator';
 import { CallProvider } from './contexts/CallContext';
@@ -12,15 +12,12 @@ import FeedbackModal from './components/FeedbackModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthPage from './components/AuthPage';
 
-const WebDemoView = React.lazy(() => import('./components/WebDemoView'));
-
 const MainLayout: React.FC = () => {
   const [activeView, setActiveView] = useState<ActiveView>(ActiveView.Agents);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
   const [isDataLayerInitialized, setIsDataLayerInitialized] = useState(false);
   const [generatedAppHtml, setGeneratedAppHtml] = useState<string | null>(null);
-  const [templateForDemo, setTemplateForDemo] = useState<Template | null>(null);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const { signOut } = useAuth();
   
@@ -38,17 +35,6 @@ const MainLayout: React.FC = () => {
   if (!isDataLayerInitialized) {
     return (
       <LoadingIndicator text="Initializing Eburon Studio..." size="large" />
-    );
-  }
-  
-  if (templateForDemo && activeView === ActiveView.WebDemo) {
-    return (
-      <Suspense fallback={<LoadingIndicator text="Loading Web Agent Demo..." size="large" />}>
-        <WebDemoView template={templateForDemo} onEndDemo={() => {
-          setTemplateForDemo(null);
-          setActiveView(ActiveView.Agents);
-        }} />
-      </Suspense>
     );
   }
 

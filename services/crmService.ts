@@ -263,6 +263,11 @@ const notify = () => {
 };
 
 export const crmService = {
+  setBookings: (incoming: CrmBooking[]) => {
+    bookings = JSON.parse(JSON.stringify(incoming));
+    notify();
+  },
+
   subscribe: (callback: Subscriber): (() => void) => {
     initializeData();
     subscribers.add(callback);

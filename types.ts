@@ -43,7 +43,6 @@ export enum ActiveView {
   Voices = 'Voices',
   TTSStudio = 'TTSStudio',
   Chatbot = 'Chatbot',
-  WebDemo = 'WebDemo',
 }
 
 export type AuthSession = Session | null;

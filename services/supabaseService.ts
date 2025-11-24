@@ -1,10 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
-import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, AgentFeedback } from '../types';
+import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, AgentFeedback, CrmBooking } from '../types';
 
 // Use environment variables for Supabase credentials
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  throw new Error('Supabase credentials are missing. Please set SUPABASE_URL and SUPABASE_KEY in your environment.');
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -372,5 +375,27 @@ export const saveAgentFeedbackToSupabase = async (feedback: Omit<AgentFeedback, 
             feedback_text: feedback.feedback_text,
         }
     ]);
+    if (error) throw error;
+};
+
+// === CRM BOOKINGS ===
+export const getCrmBookingsFromSupabase = async (): Promise<CrmBooking[]> => {
+    const { data, error } = await supabase
+        .from('crm_bookings')
+        .select('*')
+        .order('flight_date', { ascending: true });
+    if (error) throw error;
+    return data || [];
+};
+
+export const upsertCrmBookingToSupabase = async (booking: CrmBooking): Promise<void> => {
+    const { error } = await supabase
+        .from('crm_bookings')
+        .upsert(booking, { onConflict: 'pnr' });
+    if (error) throw error;
+};
+
+export const deleteCrmBookingFromSupabase = async (pnr: string): Promise<void> => {
+    const { error } = await supabase.from('crm_bookings').delete().eq('pnr', pnr);
     if (error) throw error;
 };

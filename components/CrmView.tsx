@@ -18,17 +18,28 @@ const CrmView: React.FC = () => {
     const [editingBooking, setEditingBooking] = useState<CrmBooking | null>(null);
     
     useEffect(() => {
-        // Initial load
-        const initialBookings = crmService.getBookings();
-        setBookings(initialBookings);
-        setIsLoading(false);
+        let isMounted = true;
+        const loadBookings = async () => {
+            try {
+                const initialBookings = await dataService.getCrmBookings();
+                if (isMounted) setBookings(initialBookings);
+            } catch (err) {
+                console.error("Failed to load CRM bookings", err);
+            } finally {
+                if (isMounted) setIsLoading(false);
+            }
+        };
+        loadBookings();
 
         // Subscribe to future updates from Ayla or other components
         const unsubscribe = crmService.subscribe(updatedBookings => {
-            setBookings(updatedBookings);
+            if (isMounted) setBookings(updatedBookings);
         });
 
-        return () => unsubscribe(); // Cleanup subscription on unmount
+        return () => {
+            isMounted = false;
+            unsubscribe();
+        };
     }, []);
 
     const filteredBookings = useMemo(() => {
