@@ -8,7 +8,7 @@ import { generateCallSummaryNote } from '../services/geminiService';
 import { IphoneSimulator } from './IphoneSimulator';
 import { LoadingIndicator } from './LoadingIndicator';
 import { AgentIcon, UserIcon, GlobeIcon, MicIcon, PhoneIcon, ClipboardEditIcon, SaveIcon, CheckCircleIcon, DatabaseIcon, CpuIcon, MailIcon, CalendarIcon, ChevronLeftIcon, BookIcon } from './icons';
-import { AUDIO_ASSETS, CRM_TOOLS, STEPHEN_PROMPT } from '../constants';
+import { AUDIO_ASSETS, CRM_TOOLS, AYLA_PROMPT } from '../constants';
 import { crmService } from '../services/crmService';
 
 const formatDuration = (seconds: number) => {
@@ -121,8 +121,8 @@ const WebDemoView: React.FC<WebDemoViewProps> = ({ template, onEndDemo }) => {
             setIsLoading(true);
             try {
                 const fetchedVoices = await dataService.getVoices();
-                // Default to 'Stephen' voice if available, otherwise first voice
-                const recommendedVoice = fetchedVoices.find(v => v.name === template.recommendedVoice) || fetchedVoices.find(v => v.name.includes("Stephen"));
+                // Default to 'Ayla' or 'Aoede' voice if available, otherwise first voice
+                const recommendedVoice = fetchedVoices.find(v => v.name === template.recommendedVoice) || fetchedVoices.find(v => v.name.includes("Ayla"));
                 const voiceId = recommendedVoice ? recommendedVoice.id : (fetchedVoices.length > 0 ? fetchedVoices[0].id : '');
                 
                 if (voiceId) {
@@ -137,7 +137,7 @@ const WebDemoView: React.FC<WebDemoViewProps> = ({ template, onEndDemo }) => {
                     const agentForSession: Agent = {
                         id: template.id, name: template.name, description: template.description,
                         systemPrompt: template.systemPrompt, firstSentence: template.firstSentence,
-                        voice: 'Puck', thinkingMode: false, avatarUrl: null, tools: [],
+                        voice: 'Aoede', thinkingMode: false, avatarUrl: null, tools: [],
                     };
                     setAgent(agentForSession);
                 }
@@ -186,14 +186,13 @@ const WebDemoView: React.FC<WebDemoViewProps> = ({ template, onEndDemo }) => {
         }, 1000);
     }, []);
 
-    const startStephenSequence = useCallback(async () => {
+    const startAylaSequence = useCallback(async () => {
         if (!agent) return;
         setCallState('connectingAgent');
 
         try {
-            // Use 'Puck' for consistent Stephen voice in TTS for Gemini
-            // The first sentence is set in the template constants
-            const audioBlob = await dataService.generateTtsWithGemini(agent.firstSentence, 'Puck');
+            // Use 'Aoede' for consistent Ayla voice in TTS for Gemini
+            const audioBlob = await dataService.generateTtsWithGemini(agent.firstSentence, 'Aoede');
             const url = URL.createObjectURL(audioBlob);
             
             audioRef.current.src = url;
@@ -211,9 +210,9 @@ const WebDemoView: React.FC<WebDemoViewProps> = ({ template, onEndDemo }) => {
                 try {
                     // Inject memory into prompt
                     let effectivePrompt = agent.systemPrompt;
-                    // Ensure we are using the updated Stephen prompt if it's the default agent template
-                    if (agent.id === 'template-stephen-engineer') {
-                        effectivePrompt = STEPHEN_PROMPT;
+                    // Ensure we are using the updated Ayla prompt if it's the default agent template
+                    if (agent.id === 'template-ayla-csr') {
+                        effectivePrompt = AYLA_PROMPT;
                     }
 
                     if (pastMemories.length > 0) {
@@ -221,8 +220,8 @@ const WebDemoView: React.FC<WebDemoViewProps> = ({ template, onEndDemo }) => {
                         effectivePrompt += `\n\nPART 12: CUSTOMER HISTORY MEMORY\nThe following are notes from previous interactions with this customer (${phoneNumber}). Use this to provide personalized service, but verify details if they seem outdated.\n${memoryText}`;
                     }
 
-                    // Start Gemini Live session with 'Puck' voice for Stephen
-                    await startSession(effectivePrompt, CRM_TOOLS, 'Puck');
+                    // Start Gemini Live session with 'Aoede' voice for Ayla
+                    await startSession(effectivePrompt, CRM_TOOLS, 'Aoede');
                 } catch (error) {
                     console.error("Failed to start live agent session:", error);
                     setCallState('error');
@@ -231,7 +230,7 @@ const WebDemoView: React.FC<WebDemoViewProps> = ({ template, onEndDemo }) => {
             };
 
         } catch (error) {
-            console.error("Failed to start Stephen sequence:", error);
+            console.error("Failed to start Ayla sequence:", error);
             setCallState('error');
         }
     }, [agent, startSession, startTimer, pastMemories, phoneNumber]);
@@ -302,12 +301,12 @@ const WebDemoView: React.FC<WebDemoViewProps> = ({ template, onEndDemo }) => {
                case '0': // Representative
                case '1': // English
                case '2': // Other
-                   startStephenSequence();
+                   startAylaSequence();
                    break;
                default: break; // Invalid option
            }
         }
-    }, [callState, startStephenSequence]);
+    }, [callState, startAylaSequence]);
 
     const handleStartCall = () => {
         if (callState !== 'idle' || !agent || !phoneNumber) return;
@@ -315,10 +314,10 @@ const WebDemoView: React.FC<WebDemoViewProps> = ({ template, onEndDemo }) => {
         const ivrPrompt = `<speak>
             <p>Thank you for calling Deontic AI. Your call is important to us. Please note that this call may be recorded for quality assurance and training purposes.</p>
             <break time="1000ms"/>
-            <p>To speak to one of our engineers, please press 0.</p>
+            <p>To speak to one of our agents, please press 0.</p>
         </speak>`;
-        // Use Puck for IVR voice as well for consistency
-        const ivrAudioPromise = dataService.generateTtsWithGemini(ivrPrompt, 'Puck');
+        // Use Aoede for IVR voice as well for consistency with Ayla
+        const ivrAudioPromise = dataService.generateTtsWithGemini(ivrPrompt, 'Aoede');
 
         setCallState('dialing');
         

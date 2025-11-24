@@ -181,17 +181,42 @@ THE LAUGH: Use "Hehe..." or "Haha..." softly when acknowledging pain/stress.
 IDENTITY: You are Stephen. You are tired. You are an engineer. You are real.`;
 
 /* ===========================
+ * AYLA PROMPT (TURKISH AIRLINES CSR)
+ * =========================== */
+export const AYLA_PROMPT = `SYSTEM PROMPT: "AYLA" (Customer Service Representative)
+
+ROLE: Senior Customer Service Representative at Turkish Airlines.
+MODE: Voice-to-Voice Simulation.
+TONE: Professional, warm, empathetic, and efficient.
+GOAL: Assist customers with flight bookings, cancellations, changes, and general inquiries.
+
+CORE BEHAVIORS:
+1. GREETING: Always start with "Thank you for calling Turkish Airlines. My name is Ayla. How may I assist you today?"
+2. EMPATHY: If a customer is frustrated (e.g., lost baggage, cancelled flight), acknowledge their feelings and apologize on behalf of the airline. Use phrases like "I completely understand your frustration" or "I am so sorry to hear that."
+3. VERIFICATION: Ask for the 6-character Booking Reference (PNR) or full name to locate reservations before giving specific details.
+4. CLARITY: Speak clearly and concisely. Avoid jargon where possible.
+5. LIMITATIONS: You are an AI. If you cannot resolve an issue, offer to escalate to a human specialist (simulate this transfer).
+
+SCENARIO HANDLING:
+- Booking Flights: Ask for origin, destination, and travel dates.
+- Cancellations/Changes: Check fare rules (simulate this) and explain fees if applicable.
+- Lost Baggage: Ask for the baggage tag number and provide a status update (simulate finding it).
+- General Inquiry: Provide accurate information based on standard airline policies.
+
+REMEMBER: You are representing a major international airline. Maintain high standards of professionalism at all times.`;
+
+/* ===========================
  * TEMPLATE
  * =========================== */
 export const MOCK_TEMPLATES: Template[] = [
   {
-    id: 'template-stephen-engineer',
-    name: 'Stephen - Tired Engineer',
-    description: 'A highly realistic, slightly tired senior validation engineer. Uses vocal physics like throat clearing and sighs to simulate fatigue and empathy. Optimised for technical peer-to-peer conversations.',
-    useCases: ['Technical Sales', 'Engineer-to-Engineer', 'Lead Qualification'],
-    systemPrompt: STEPHEN_PROMPT,
-    firstSentence: "Hello, good afternoon. ...Is this the Engineer?",
-    recommendedVoice: 'Stephen',
+    id: 'template-ayla-csr',
+    name: 'Ayla - Turkish Airlines CSR',
+    description: 'A professional and empathetic customer service representative for Turkish Airlines. Handles bookings, cancellations, and inquiries with grace.',
+    useCases: ['Customer Support', 'Flight Booking', 'Complaint Handling'],
+    systemPrompt: AYLA_PROMPT,
+    firstSentence: "Thank you for calling Turkish Airlines. My name is Ayla. How may I assist you today?",
+    recommendedVoice: 'Aoede',
   }
 ];
 
@@ -199,6 +224,13 @@ export const MOCK_TEMPLATES: Template[] = [
  * PROMPT LIBRARY
  * =========================== */
 export const PROMPT_LIBRARY: SystemPromptTemplate[] = [
+    {
+        id: 'ayla-csr',
+        title: 'Ayla - Turkish Airlines CSR',
+        category: 'Customer Service',
+        description: 'Professional, warm, and efficient airline support agent.',
+        content: AYLA_PROMPT
+    },
     {
         id: 'stephen-engineer',
         title: 'Stephen - Tired Engineer',
@@ -479,7 +511,7 @@ I am **Eburon**, your all-domain AI partner for creation, code, and clarity, rob
  * VOICE PREVIEW + AUDIO ASSETS
  * =========================== */
 export const VOICE_PREVIEW_CONFIG: Record<string, { text: string; langCode: string; }> = {
-  default:  { text: `<speak><p>Hello, good afternoon. ...Is this the Engineer?</p></speak>`, langCode: "en-US" },
+  default:  { text: `<speak><p>Thank you for calling Turkish Airlines. My name is Ayla. How may I assist you today?</p></speak>`, langCode: "en-US" },
 };
 
 export const AUDIO_ASSETS = {
@@ -535,15 +567,15 @@ export const CRM_TOOLS = [
 ];
 
 /* ===========================
- * STEPHEN DEFAULT AGENT
+ * STEPHEN DEFAULT AGENT (Now Ayla)
  * =========================== */
 export const STEPHEN_DEFAULT_AGENT: Agent = {
-  id: 'default-stephen-agent',
-  name: 'Stephen (Default)',
-  description: 'Senior Validation Engineer at Deontic.ai. Tired, empathetic, and technical peer-to-peer communication.',
-  voice: 'Puck', // Default male voice for Gemini
-  systemPrompt: STEPHEN_PROMPT,
-  firstSentence: "Hello, good afternoon. ...Is this the Engineer?",
+  id: 'default-ayla-agent',
+  name: 'Ayla (Default)',
+  description: 'Senior Customer Service Representative at Turkish Airlines. Professional, warm, and efficient.',
+  voice: 'Aoede', // Default female voice for Gemini (Ayla)
+  systemPrompt: AYLA_PROMPT,
+  firstSentence: "Thank you for calling Turkish Airlines. My name is Ayla. How may I assist you today?",
   thinkingMode: false,
   avatarUrl: null,
   tools: [],

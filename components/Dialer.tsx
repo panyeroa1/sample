@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PhoneIcon, BrainCircuitIcon, ToggleOnIcon, ToggleOffIcon } from './icons';
 import { placeCall } from '../services/blandAiService';
 import { getActiveDialerAgent } from '../services/dataService';
-import { STEPHEN_DEFAULT_AGENT, STEPHEN_PROMPT } from '../constants';
+import { STEPHEN_DEFAULT_AGENT, STEPHEN_PROMPT, AYLA_PROMPT } from '../constants';
 import { Agent } from '../types';
 import { useGeminiLiveAgent } from '../hooks/useGeminiLive';
 
@@ -123,9 +123,8 @@ const Dialer: React.FC<DialerProps> = () => {
              setIsCalling(true);
              setStatusText('Connecting (Web)...');
              try {
-                // Use Stephen's Prompt for web demo.
-                // Using 'Puck' voice as a standard male voice for Gemini
-                await startSession(STEPHEN_PROMPT, undefined, 'Puck');
+                // Use Ayla's Prompt and Voice ('Aoede') for web demo as requested.
+                await startSession(AYLA_PROMPT, undefined, 'Aoede');
              } catch (e: any) {
                 console.error("Web Demo Error:", e);
                 setStatusText('Connection Failed');
@@ -232,7 +231,7 @@ const Dialer: React.FC<DialerProps> = () => {
                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Active Agent</div>
                     <div className="flex items-center gap-2 justify-center bg-gray-800/50 px-3 py-1.5 rounded-full">
                          <BrainCircuitIcon className={`w-3 h-3 ${isWebDemo ? 'text-purple-400' : 'text-blue-400'}`} />
-                         <span className="font-semibold text-sm">{isWebDemo ? 'Stephen (Live)' : activeAgent.name}</span>
+                         <span className="font-semibold text-sm">{isWebDemo ? 'Ayla (Live)' : activeAgent.name}</span>
                     </div>
                 </div>
 
