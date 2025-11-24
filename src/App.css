@@ -16,6 +16,14 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --radius: 12px;
   --transition: all 0.2s ease-in-out;
+  
+  /* Priority Colors */
+  --prio-high-bg: #fee2e2;
+  --prio-high-text: #dc2626;
+  --prio-med-bg: #fef3c7;
+  --prio-med-text: #d97706;
+  --prio-low-bg: #dbeafe;
+  --prio-low-text: #2563eb;
 }
 
 body {
@@ -89,6 +97,25 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
+/* Priority Select Box */
+.priority-select {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background-color: #f9fafb;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.priority-select:focus {
+  border-color: var(--accent-color);
+  background: white;
+}
+
 .icon-btn {
   display: flex;
   align-items: center;
@@ -133,7 +160,7 @@ input:focus {
 
 .task-content {
   display: flex;
-  align-items: center;
+  align-items: flex-start; /* Align to top for multi-line */
   gap: 12px;
   cursor: pointer;
   flex-grow: 1;
@@ -141,7 +168,13 @@ input:focus {
 }
 
 .task-content:hover {
-  opacity: 0.8;
+  opacity: 0.9;
+}
+
+.text-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 /* Custom Checkbox */
@@ -155,6 +188,8 @@ input:focus {
   justify-content: center;
   transition: var(--transition);
   color: white;
+  flex-shrink: 0;
+  margin-top: 2px; /* Visual alignment with text */
 }
 
 .task-item.completed .checkbox-custom {
@@ -167,9 +202,36 @@ input:focus {
   transition: var(--transition);
 }
 
-.task-item.completed span {
+.task-item.completed .text-wrapper span:first-child {
   text-decoration: line-through;
   color: var(--text-secondary);
+}
+
+/* Priority Badge */
+.priority-badge {
+  display: inline-block;
+  font-size: 0.7rem !important; /* Override general span styling */
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  width: fit-content;
+}
+
+.priority-badge.high {
+  background-color: var(--prio-high-bg);
+  color: var(--prio-high-text);
+}
+
+.priority-badge.medium {
+  background-color: var(--prio-med-bg);
+  color: var(--prio-med-text);
+}
+
+.priority-badge.low {
+  background-color: var(--prio-low-bg);
+  color: var(--prio-low-text);
 }
 
 /* Delete Button */

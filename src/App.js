@@ -4,11 +4,12 @@ import './App.css';
 
 function App() {
   const [tasks, setTasks] = useState([
-    { id: 1, text: 'Buy groceries', completed: false },
-    { id: 2, text: 'Walk the dog', completed: true },
-    { id: 3, text: 'Read a book', completed: false },
+    { id: 1, text: 'Buy groceries', completed: false, priority: 'Medium' },
+    { id: 2, text: 'Walk the dog', completed: true, priority: 'Low' },
+    { id: 3, text: 'Read a book', completed: false, priority: 'High' },
   ]);
   const [newTask, setNewTask] = useState('');
+  const [newPriority, setNewPriority] = useState('Medium');
   const [isLoading, setIsLoading] = useState(true);
 
   // State for Delete Confirmation Modal
@@ -24,8 +25,17 @@ function App() {
 
   const addTask = () => {
     if (newTask.trim() === '') return;
-    setTasks([...tasks, { id: Date.now(), text: newTask, completed: false }]);
+    setTasks([
+      ...tasks,
+      { 
+        id: Date.now(), 
+        text: newTask, 
+        completed: false, 
+        priority: newPriority 
+      }
+    ]);
     setNewTask('');
+    setNewPriority('Medium'); // Reset priority to default
   };
 
   const toggleTask = (id) => {
@@ -69,6 +79,15 @@ function App() {
             placeholder="What needs to be done?"
             onKeyPress={(e) => e.key === 'Enter' && addTask()}
           />
+          <select 
+            className="priority-select"
+            value={newPriority} 
+            onChange={(e) => setNewPriority(e.target.value)}
+          >
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
           <button 
             className="icon-btn add-btn" 
             onClick={addTask}
@@ -93,7 +112,12 @@ function App() {
                     <div className="checkbox-custom">
                       {task.completed && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
                     </div>
-                    <span>{task.text}</span>
+                    <div className="text-wrapper">
+                      <span>{task.text}</span>
+                      <span className={`priority-badge ${task.priority.toLowerCase()}`}>
+                        {task.priority}
+                      </span>
+                    </div>
                   </div>
                   <button 
                     className="icon-btn delete-btn" 
