@@ -1,11 +1,22 @@
+
 import { GoogleGenAI, GenerateContentResponse, GroundingMetadata, Modality, Content, Part } from "@google/genai";
 import { ChatMessage } from '../types';
+import { getConfig } from "./configService";
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set");
+// Helper to get initialized AI client
+const getAiClient = () => {
+    // Config priority: App Config > Env Var
+    // Note: In a real app, env vars are usually build-time or server-side. 
+    // Here we assume process.env is available for the demo key.
+    const config = getConfig();
+    const apiKey = config.apiKeys.geminiApiKey || process.env.API_KEY;
+    
+    if (!apiKey) {
+        throw new Error("Gemini API Key not configured. Please set it in Admin Settings or env.");
+    }
+    return new GoogleGenAI({ apiKey });
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const EBURON_ERROR_MESSAGE = "The Eburon.ai service encountered an error. Please try again.";
 
 // --- Audio Helper Functions ---
@@ -48,8 +59,6 @@ function pcmToWavBlob(pcmData: Uint8Array, options: { numChannels: number, sampl
 
     return new Blob([buffer], { type: 'audio/wav' });
 }
-// --- End Audio Helper Functions ---
-
 
 const fileToGenerativePart = async (file: File) => {
     const base64EncodedDataPromise = new Promise<string>((resolve) => {
@@ -76,9 +85,23 @@ export const sendMessageStreamToGemini = async (
     systemPrompt: string
 ): Promise<AsyncIterable<GenerateContentResponse>> => {
     try {
-        let modelName = 'gemini-2.5-flash';
-        if (options.useThinkingMode) modelName = 'gemini-2.5-pro';
-        else if (options.useLowLatency) modelName = 'gemini-2.5-flash-lite';
+        const ai = getAiClient();
+        
+        // Model selection logic
+        let modelName = 'gemini-2.5-flash'; // Default
+        
+        if (options.useThinkingMode) {
+            modelName = 'gemini-2.5-pro';
+        } else if (options.useLowLatency) {
+             // If grounding is enabled, we must use a model that supports tools reliably.
+             // Flash Lite is faster but Flash is safer for complex tool use like Grounding.
+             // We'll stick to Flash if grounding is on.
+             if (options.useSearchGrounding || options.useMapsGrounding) {
+                 modelName = 'gemini-2.5-flash'; 
+             } else {
+                 modelName = 'gemini-2.5-flash-lite';
+             }
+        }
 
         const contents: Content[] = history.map(msg => ({
             role: msg.role,
@@ -96,29 +119,41 @@ export const sendMessageStreamToGemini = async (
             systemInstruction: systemPrompt,
         };
         
-        if (options.useThinkingMode) {
-            config.thinkingConfig = { thinkingBudget: 32768 };
-        } else {
-            // Ensure thinking is off for other models
-            config.thinkingConfig = { thinkingBudget: 0 };
+        // Configure Tools
+        const tools: any[] = [];
+        
+        if (options.useSearchGrounding) {
+            tools.push({ googleSearch: {} });
+        }
+        
+        if (options.useMapsGrounding) {
+            tools.push({ googleMaps: {} });
+        }
+        
+        if (tools.length > 0) {
+            config.tools = tools;
         }
 
-        const tools: any[] = [];
-        if (options.useSearchGrounding) tools.push({ googleSearch: {} });
-        if (options.useMapsGrounding) tools.push({ googleMaps: {} });
-        if (tools.length > 0) config.tools = tools;
-
-        const toolConfig: any = {};
+        // Configure Retrieval for Maps if needed
         if (options.useMapsGrounding && options.userLocation) {
-            toolConfig.retrievalConfig = {
-                latLng: {
-                    latitude: options.userLocation.latitude,
-                    longitude: options.userLocation.longitude
+            config.toolConfig = {
+                retrievalConfig: {
+                    latLng: {
+                        latitude: options.userLocation.latitude,
+                        longitude: options.userLocation.longitude
+                    }
                 }
             };
         }
-        if (Object.keys(toolConfig).length > 0) {
-            config.toolConfig = toolConfig;
+
+        // Configure Thinking (Only available on Pro/Flash 2.5)
+        if (options.useThinkingMode) {
+            // Note: Check model compatibility. Usually 2.5 Pro supports this.
+             // Use a standard budget or the max 32k if needed for deep thought
+            config.thinkingConfig = { thinkingBudget: 1024 }; 
+        } else {
+             // Explicitly disable thinking if not requested to avoid unexpected token usage
+            config.thinkingConfig = { thinkingBudget: 0 };
         }
 
         return ai.models.generateContentStream({
@@ -137,10 +172,11 @@ export const generateImageWithGemini = async (
     imageFile: File | null
 ): Promise<string> => {
     try {
+        const ai = getAiClient();
         const parts: Part[] = [{ text: prompt }];
         if (imageFile) {
             const imagePart = await fileToGenerativePart(imageFile);
-            parts.unshift(imagePart); // Image comes first for editing
+            parts.unshift(imagePart);
         }
 
         const response = await ai.models.generateContent({
@@ -169,6 +205,7 @@ export const generateImageWithGemini = async (
 
 export const generateTtsWithGemini = async (text: string, voiceName: string = 'Kore'): Promise<Blob> => {
     try {
+        const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash-preview-tts",
             contents: [{ parts: [{ text }] }],
@@ -195,6 +232,7 @@ export const generateTtsWithGemini = async (text: string, voiceName: string = 'K
 
 export const transcribeAudioWithGemini = async (audioFile: File): Promise<string> => {
     try {
+        const ai = getAiClient();
         const audioPart = await fileToGenerativePart(audioFile);
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -205,9 +243,39 @@ export const transcribeAudioWithGemini = async (audioFile: File): Promise<string
                 ]
             },
         });
-        return response.text;
+        return response.text || "";
     } catch (error) {
         console.error("Eburon AI Service Error (Transcription):", error);
         throw new Error(EBURON_ERROR_MESSAGE);
     }
 };
+
+export const generateCallSummaryNote = async (transcriptText: string): Promise<string> => {
+    try {
+        const ai = getAiClient();
+        const prompt = `You are a CRM note-taking assistant. 
+        Summarize the following customer service call transcript into a concise, professional note for the next agent.
+        
+        Include:
+        1. Customer Name (if known)
+        2. Key Issue/Request
+        3. Action Taken
+        4. Sentiment (Happy, Frustrated, etc.)
+        5. Next Steps
+        
+        Keep it under 100 words.
+        
+        Transcript:
+        ${transcriptText}`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ parts: [{ text: prompt }] }],
+        });
+
+        return response.text || "No summary available.";
+    } catch (error) {
+        console.error("Summary generation failed:", error);
+        return "Failed to generate summary note.";
+    }
+}

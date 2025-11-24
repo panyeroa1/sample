@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Voice } from '../types';
 import { PlusIcon, SaveIcon } from './icons';
@@ -61,6 +62,7 @@ export const EditVoiceModal: React.FC<EditVoiceModalProps> = ({ voice, onSave, o
                                         onClick={() => handleRemoveTag(tag)} 
                                         className="text-eburon-fg/50 hover:text-red-400 rounded-full"
                                         aria-label={`Remove tag ${tag}`}
+                                        data-tooltip="Remove Tag"
                                     >
                                         &times;
                                     </button>

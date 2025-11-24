@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { CrmBooking } from '../types';
 import CrmDetailView from './CrmDetailView';
@@ -18,28 +19,17 @@ const CrmView: React.FC = () => {
     const [editingBooking, setEditingBooking] = useState<CrmBooking | null>(null);
     
     useEffect(() => {
-        let isMounted = true;
-        const loadBookings = async () => {
-            try {
-                const initialBookings = await dataService.getCrmBookings();
-                if (isMounted) setBookings(initialBookings);
-            } catch (err) {
-                console.error("Failed to load CRM bookings", err);
-            } finally {
-                if (isMounted) setIsLoading(false);
-            }
-        };
-        loadBookings();
+        // Initial load
+        const initialBookings = crmService.getBookings();
+        setBookings(initialBookings);
+        setIsLoading(false);
 
         // Subscribe to future updates from Ayla or other components
         const unsubscribe = crmService.subscribe(updatedBookings => {
-            if (isMounted) setBookings(updatedBookings);
+            setBookings(updatedBookings);
         });
 
-        return () => {
-            isMounted = false;
-            unsubscribe();
-        };
+        return () => unsubscribe(); // Cleanup subscription on unmount
     }, []);
 
     const filteredBookings = useMemo(() => {
@@ -162,10 +152,18 @@ const CrmView: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-4">
                                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => handleOpenEditModal(booking)} className="p-2 rounded-lg hover:bg-eburon-bg text-eburon-fg/70 hover:text-eburon-accent" title="Edit">
+                                        <button 
+                                            onClick={() => handleOpenEditModal(booking)} 
+                                            className="p-2 rounded-lg hover:bg-eburon-bg text-eburon-fg/70 hover:text-eburon-accent" 
+                                            data-tooltip="Edit Booking"
+                                        >
                                             <EditIcon className="w-4 h-4" />
                                         </button>
-                                        <button onClick={() => handleDeleteBooking(booking.pnr)} className="p-2 rounded-lg hover:bg-eburon-bg text-eburon-fg/70 hover:text-red-400" title="Delete">
+                                        <button 
+                                            onClick={() => handleDeleteBooking(booking.pnr)} 
+                                            className="p-2 rounded-lg hover:bg-eburon-bg text-eburon-fg/70 hover:text-red-400" 
+                                            data-tooltip="Delete Booking"
+                                        >
                                             <Trash2Icon className="w-4 h-4" />
                                         </button>
                                     </div>

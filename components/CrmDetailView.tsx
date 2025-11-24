@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { CrmBooking } from '../types';
 import { ChevronLeftIcon, UserIcon, MailIcon, PhoneIcon, CalendarIcon, CopyIcon, GlobeIcon } from './icons';
@@ -20,7 +21,11 @@ const DetailItem: React.FC<{ icon: React.FC<any>, label: string, value: string |
             <div className="flex items-center justify-between">
                 <p className={`text-eburon-fg font-semibold truncate ${isMono ? 'font-mono' : ''}`}>{value}</p>
                 {canCopy && (
-                    <button onClick={handleCopy} className="text-xs text-eburon-fg/70 hover:text-eburon-accent p-1">
+                    <button 
+                        onClick={handleCopy} 
+                        className="text-xs text-eburon-fg/70 hover:text-eburon-accent p-1"
+                        data-tooltip={copied ? "Copied!" : "Copy to Clipboard"}
+                    >
                         {copied ? 'Copied!' : <CopyIcon className="w-4 h-4" />}
                     </button>
                 )}

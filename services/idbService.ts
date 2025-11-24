@@ -1,7 +1,8 @@
-import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, Feedback, AgentFeedback, CrmBooking } from '../types';
+
+import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, Feedback, AgentFeedback, AgentTool } from '../types';
 
 const DB_NAME = 'EburonStudioDB';
-const DB_VERSION = 4; // Incremented version for schema change
+const DB_VERSION = 4; // Incremented for tools store
 const AGENTS_STORE = 'agents';
 const VOICES_STORE = 'voices';
 const CALL_LOGS_STORE = 'call_logs';
@@ -9,7 +10,7 @@ const TTS_GENERATIONS_STORE = 'tts_generations';
 const CHATBOT_MESSAGES_STORE = 'chatbot_messages';
 const FEEDBACK_STORE = 'feedback';
 const AGENT_FEEDBACK_STORE = 'agent_feedback';
-const CRM_BOOKINGS_STORE = 'crm_bookings';
+const TOOLS_STORE = 'tools';
 
 
 let db: IDBDatabase | null = null;
@@ -45,8 +46,8 @@ const openDB = (): Promise<IDBDatabase> => {
             if (!tempDb.objectStoreNames.contains(AGENT_FEEDBACK_STORE)) {
                 tempDb.createObjectStore(AGENT_FEEDBACK_STORE, { keyPath: 'id' });
             }
-            if (!tempDb.objectStoreNames.contains(CRM_BOOKINGS_STORE)) {
-                tempDb.createObjectStore(CRM_BOOKINGS_STORE, { keyPath: 'pnr' });
+            if (!tempDb.objectStoreNames.contains(TOOLS_STORE)) {
+                tempDb.createObjectStore(TOOLS_STORE, { keyPath: 'id' });
             }
         };
 
@@ -170,8 +171,7 @@ export const upsertFeedbackToIdb = (feedback: Feedback[]): Promise<void> => upse
 // AGENT FEEDBACK
 export const upsertAgentFeedbackToIdb = (feedback: AgentFeedback[]): Promise<void> => upsertAll<AgentFeedback>(AGENT_FEEDBACK_STORE, feedback);
 
-// CRM BOOKINGS
-export const getCrmBookingsFromIdb = (): Promise<CrmBooking[]> => getAll<CrmBooking>(CRM_BOOKINGS_STORE);
-export const upsertCrmBookingsToIdb = (bookings: CrmBooking[]): Promise<void> => upsertAll<CrmBooking>(CRM_BOOKINGS_STORE, bookings);
-export const deleteCrmBookingFromIdb = (pnr: string): Promise<void> => deleteItem(CRM_BOOKINGS_STORE, pnr);
-export const clearCrmBookingsFromIdb = (): Promise<void> => clearStore(CRM_BOOKINGS_STORE);
+// TOOLS
+export const getToolsFromIdb = (): Promise<AgentTool[]> => getAll<AgentTool>(TOOLS_STORE);
+export const upsertToolsToIdb = (tools: AgentTool[]): Promise<void> => upsertAll<AgentTool>(TOOLS_STORE, tools);
+export const deleteToolFromIdb = (toolId: string): Promise<void> => deleteItem(TOOLS_STORE, toolId);

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { CallLog, TranscriptSegment } from '../types';
-import { fetchRecording } from '../services/blandAiService';
+import { fetchRecording, fetchCallDetails } from '../services/blandAiService';
 import * as dataService from '../services/dataService';
 import { SearchIcon, PhoneIcon, UserIcon, AgentIcon, RefreshIcon, PlayIcon, PauseIcon, HistoryIcon, CalendarIcon, CopyIcon, ChevronLeftIcon } from './icons';
 import { LoadingIndicator } from './LoadingIndicator';
@@ -25,7 +25,8 @@ const formatDate = (dateString: string) => {
     });
 };
 
-const CallDetailView: React.FC<{ call: CallLog, onBack: () => void }> = ({ call, onBack }) => {
+const CallDetailView: React.FC<{ call: CallLog, onBack: () => void }> = ({ call: initialCall, onBack }) => {
+    const [call, setCall] = useState<CallLog>(initialCall);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [isLoadingAudio, setIsLoadingAudio] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
@@ -39,6 +40,18 @@ const CallDetailView: React.FC<{ call: CallLog, onBack: () => void }> = ({ call,
     const objectUrlRef = useRef<string | null>(null);
     
     const [copyStatus, setCopyStatus] = useState('Copy');
+
+    useEffect(() => {
+        const loadFullDetails = async () => {
+             try {
+                 const fullDetails = await fetchCallDetails(initialCall.call_id);
+                 setCall(prev => ({ ...prev, ...fullDetails }));
+             } catch (e) {
+                 console.warn("Could not fetch full call details, using summary data.", e);
+             }
+        };
+        loadFullDetails();
+    }, [initialCall.call_id]);
 
     const loadRecording = useCallback(async () => {
         setIsLoadingAudio(true);
@@ -190,14 +203,18 @@ const CallDetailView: React.FC<{ call: CallLog, onBack: () => void }> = ({ call,
                      {error && (
                         <div className="h-14 bg-red-900/50 border border-red-500 text-red-300 rounded-lg flex items-center justify-between text-sm px-4">
                             <span>{error}</span>
-                            <button onClick={loadRecording} className="p-2 rounded-lg hover:bg-white/10" title="Retry loading audio">
+                            <button onClick={loadRecording} className="p-2 rounded-lg hover:bg-white/10" data-tooltip="Retry loading audio">
                                 <RefreshIcon className="w-5 h-5" />
                             </button>
                         </div>
                      )}
                      {!isLoadingAudio && !error && audioUrl && (
                         <div className="flex items-center gap-4">
-                            <button onClick={togglePlayPause} className="p-3 bg-eburon-accent text-white rounded-full hover:bg-eburon-accent-dark transition-colors">
+                            <button 
+                                onClick={togglePlayPause} 
+                                className="p-3 bg-eburon-accent text-white rounded-full hover:bg-eburon-accent-dark transition-colors"
+                                data-tooltip={isPlaying ? "Pause" : "Play"}
+                            >
                                 {isPlaying ? <PauseIcon className="w-5 h-5"/> : <PlayIcon className="w-5 h-5"/>}
                             </button>
                             <div className="flex-grow flex items-center gap-3">
@@ -268,9 +285,16 @@ const CallLogsView: React.FC = () => {
     }, [loadLogs]);
 
     const filteredLogs = useMemo(() => {
-        if (!searchTerm) return callLogs;
+        // Filter only for Turkish numbers (+90)
+        const turkishLogs = callLogs.filter(log => 
+            (log.to && (log.to.startsWith('+90') || log.to.startsWith('90'))) || 
+            (log.from && (log.from.startsWith('+90') || log.from.startsWith('90')))
+        );
+
+        if (!searchTerm) return turkishLogs;
+        
         const lowercasedFilter = searchTerm.toLowerCase();
-        return callLogs.filter(log => 
+        return turkishLogs.filter(log => 
             log.from.includes(lowercasedFilter) || 
             log.to.includes(lowercasedFilter) ||
             log.concatenated_transcript.toLowerCase().includes(lowercasedFilter)

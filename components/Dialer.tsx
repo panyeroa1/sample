@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
-import * as blandAiService from '../services/blandAiService';
-import * as dataService from '../services/dataService';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { PhoneIcon, BrainCircuitIcon, ToggleOnIcon, ToggleOffIcon } from './icons';
+import { placeCall } from '../services/blandAiService';
+import { getActiveDialerAgent } from '../services/dataService';
+import { STEPHEN_DEFAULT_AGENT, STEPHEN_PROMPT } from '../constants';
 import { Agent } from '../types';
-import { PhoneIcon, GlobeIcon, XIcon } from './icons';
-import { AYLA_DEFAULT_AGENT } from '../constants';
+import { useGeminiLiveAgent } from '../hooks/useGeminiLive';
 
 interface DialerProps {}
 
@@ -17,237 +19,276 @@ const DIALPAD_KEYS = [
 const DialpadKey: React.FC<{
     label: string;
     sublabel: string;
-    onShortPress: () => void;
+    onClick: () => void;
     onLongPress?: () => void;
-}> = ({ label, sublabel, onShortPress, onLongPress }) => {
+}> = ({ label, sublabel, onClick, onLongPress }) => {
     const timerRef = useRef<number | null>(null);
+    const isLongPress = useRef(false);
 
-    const handlePressStart = () => {
+    const startPress = () => {
+        isLongPress.current = false;
         if (onLongPress) {
             timerRef.current = window.setTimeout(() => {
+                isLongPress.current = true;
                 onLongPress();
-                timerRef.current = null; // Mark as fired
-            }, 500); // 500ms threshold for long press
+            }, 800); // 800ms for long press
         }
     };
 
-    const handlePressEnd = () => {
+    const endPress = (e: React.TouchEvent | React.MouseEvent) => {
         if (timerRef.current) {
-            // Timer is still running, so it was a short press
             clearTimeout(timerRef.current);
             timerRef.current = null;
-            onShortPress();
         }
-        // If timerRef.current is null, the long press has already fired.
+        
+        if (isLongPress.current) {
+            e.preventDefault(); // Prevent default click if it was a long press
+            return;
+        }
+        
+        // Only trigger click if it wasn't a long press
+        onClick();
     };
 
     return (
         <button
-            onMouseDown={handlePressStart}
-            onMouseUp={handlePressEnd}
-            onMouseLeave={() => { if (timerRef.current) clearTimeout(timerRef.current); }} // Cancel on leave
-            onTouchStart={handlePressStart}
-            onTouchEnd={handlePressEnd}
-            className="bg-eburon-bg hover:bg-eburon-border border border-eburon-border text-eburon-fg rounded-xl py-4 text-xl font-semibold transition-all duration-200 transform hover:scale-105 active:scale-95"
+            onMouseDown={startPress}
+            onMouseUp={endPress}
+            onTouchStart={startPress}
+            onTouchEnd={endPress}
+            className="bg-white/10 hover:bg-white/20 active:bg-white/30 text-white rounded-full w-16 h-16 sm:w-20 sm:h-20 flex flex-col items-center justify-center transition-all duration-200 backdrop-blur-sm select-none"
         >
-            {label}
-            {sublabel && <div className="text-xs text-eburon-fg/50">{sublabel}</div>}
+            <span className="text-2xl font-normal">{label}</span>
+            {sublabel && <span className="text-[8px] text-white/50 font-bold tracking-widest">{sublabel}</span>}
         </button>
     );
 };
 
-
 const Dialer: React.FC<DialerProps> = () => {
-    const [agentMode, setAgentMode] = useState<'mobile' | 'web'>('mobile');
-    const [phoneNumber, setPhoneNumber] = useState('+639056741316');
-    const [statusText, setStatusText] = useState('Ready to make a call');
-    const [callInProgress, setCallInProgress] = useState(false);
-    const [statusType, setStatusType] = useState<'default' | 'success' | 'error' | 'info'>('default');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [statusText, setStatusText] = useState('Ready');
+    const [isCalling, setIsCalling] = useState(false);
+    const [activeAgent, setActiveAgent] = useState<Agent>(STEPHEN_DEFAULT_AGENT);
+    
+    // Web Demo State
+    const [isWebDemo, setIsWebDemo] = useState(false);
+    const { startSession, endSession, isSessionActive, isConnecting: isWebConnecting } = useGeminiLiveAgent();
 
-    const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
-    const [isLoadingAgent, setIsLoadingAgent] = useState(true);
 
     useEffect(() => {
-        const getAgent = async () => {
-            setIsLoadingAgent(true);
-            setStatus('Loading agent configuration...', 'info');
+        const loadAgent = async () => {
             try {
-                const agent = await dataService.getActiveDialerAgent();
+                const agent = await getActiveDialerAgent();
                 if (agent) {
                     setActiveAgent(agent);
-                } else {
-                    setActiveAgent(AYLA_DEFAULT_AGENT); // Fallback to default
                 }
-            } catch (error) {
-                console.error("Failed to fetch active agent", error);
-                setStatus('Could not load agent configuration', 'error');
-                setActiveAgent(AYLA_DEFAULT_AGENT); // Also fallback on error
-            } finally {
-                setIsLoadingAgent(false);
-                setStatus('Ready to make a call');
+            } catch (e) {
+                console.error("Failed to load active agent:", e);
             }
-        };
-        if (agentMode === 'mobile') {
-            getAgent();
         }
-    }, [agentMode]);
+        loadAgent();
+    }, []);
 
-
-    const setStatus = (message: string, type: typeof statusType = 'default') => {
-        setStatusText(message);
-        setStatusType(type);
-    };
-
-    const handleMakeCall = async () => {
-        if (!activeAgent) {
-            setStatus('No agent is configured. Please activate one.', 'error');
-            return;
+    // Sync Web Demo status with UI status
+    useEffect(() => {
+        if (isWebConnecting) {
+            setIsCalling(true);
+            setStatusText('Connecting...');
+        } else if (isSessionActive) {
+            setIsCalling(true);
+            setStatusText('Live Session Active');
+        } else if (!isSessionActive && !isWebConnecting && isCalling && isWebDemo) {
+             // Reset if session ends abruptly from hook side
+             setIsCalling(false);
+             setStatusText('Ready');
         }
-        if (!phoneNumber) {
-            setStatus('Please enter a phone number', 'error');
-            return;
-        }
-        if (!phoneNumber.startsWith('+')) {
-            setStatus('Please include country code (e.g., +1)', 'error');
-            return;
-        }
+    }, [isSessionActive, isWebConnecting, isWebDemo, isCalling]);
 
-        setCallInProgress(true);
-        setStatus(`Calling with ${activeAgent.name}...`, 'info');
-
-        const result = await blandAiService.placeCall(phoneNumber, activeAgent);
-
-        if (result.success && result.call_id) {
-            setStatus('Call initiated! Connecting...', 'success');
-            setTimeout(() => setStatus('Call connected', 'success'), 4000);
-        } else {
-            setStatus(result.message || 'Call failed. Please try again.', 'error');
-            setCallInProgress(false);
-        }
-    };
-
-    const handleHangup = () => {
-        setCallInProgress(false);
-        setStatus('Call ended. Ready for next call.', 'info');
-    };
 
     const handleDialpadInput = (char: string) => {
-        if (phoneNumber.length < 20) {
+        if (phoneNumber.length < 15) {
             setPhoneNumber(p => p + char);
         }
     };
 
-    const statusColor = {
-        success: 'text-eburon-ok',
-        error: 'text-red-400',
-        info: 'text-blue-400',
-        default: 'text-eburon-fg/60',
+    const handleDelete = () => {
+        setPhoneNumber(p => p.slice(0, -1));
+    };
+
+    const handleCall = async () => {
+        if (isCalling || isWebConnecting) return;
+        
+        // --- WEB DEMO MODE ---
+        if (isWebDemo) {
+             setIsCalling(true);
+             setStatusText('Connecting (Web)...');
+             try {
+                // Use Stephen's Prompt for web demo.
+                // Using 'Puck' voice as a standard male voice for Gemini
+                await startSession(STEPHEN_PROMPT, undefined, 'Puck');
+             } catch (e: any) {
+                console.error("Web Demo Error:", e);
+                setStatusText('Connection Failed');
+                setIsCalling(false);
+                setTimeout(() => setStatusText('Ready'), 2000);
+             }
+             return;
+        }
+
+        // --- STANDARD PHONE CALL MODE ---
+        if (!phoneNumber) {
+            setStatusText('Enter Number');
+            setTimeout(() => setStatusText('Ready'), 2000);
+            return;
+        }
+
+        setIsCalling(true);
+        setStatusText('Initiating Call...');
+        
+        try {
+            // Ensure we have the latest agent config
+            const agent = await getActiveDialerAgent() || STEPHEN_DEFAULT_AGENT;
+            setActiveAgent(agent);
+
+            const result = await placeCall(phoneNumber, agent);
+            
+            if (result.success) {
+                setStatusText('Call Dispatched');
+                // Reset after a few seconds as the call is handled externally
+                setTimeout(() => {
+                    setStatusText('Call Dispatched');
+                    setTimeout(() => {
+                         setIsCalling(false);
+                         setStatusText('Ready');
+                         setPhoneNumber('');
+                    }, 2000);
+                }, 2000);
+            } else {
+                console.error(result.message);
+                setStatusText('Failed');
+                setTimeout(() => {
+                    setIsCalling(false);
+                    setStatusText('Ready');
+                }, 2000);
+            }
+        } catch (e) {
+            console.error("Failed to start call", e);
+            setStatusText('Error');
+            setTimeout(() => {
+                setIsCalling(false);
+                setStatusText('Ready');
+            }, 2000);
+        }
+    };
+    
+    const handleEndCall = () => {
+        if (isWebDemo) {
+            endSession();
+            setIsCalling(false);
+            setStatusText('Ready');
+        }
+        // For phone calls, we can't really "end" them from here once dispatched via API in this context 
+        // without tracking call_id separately, but resetting UI is fine.
+        if (!isWebDemo && isCalling) {
+             setIsCalling(false);
+             setStatusText('Ready');
+        }
     };
 
     return (
-        <div className="w-full h-full flex flex-col bg-eburon-bg text-eburon-fg">
-            <header className="pt-14 pb-4 px-4 flex justify-between items-center flex-shrink-0">
-                <div className="flex items-center space-x-3">
-                    <img src="https://eburon.ai/assets/icon-eburon.png" alt="Eburon Logo" className="h-8 w-8" />
-                    <h1 className="text-2xl font-bold text-eburon-accent">Eburon Dialer</h1>
+        <div className="w-full h-full flex flex-col bg-black text-white relative overflow-hidden font-sans">
+            {/* Background Gradient */}
+            <div className="absolute inset-0 bg-gradient-to-b from-gray-900 to-black z-0"></div>
+
+            {/* Header */}
+            <div className="relative z-10 pt-6 pb-2 text-center flex flex-col items-center">
+                <h2 className="text-sm font-medium text-gray-400 tracking-widest uppercase mb-1">
+                    Eburon Dialer
+                </h2>
+                <div className={`text-xs font-semibold py-1 px-3 rounded-full inline-block transition-colors duration-300 ${isCalling ? 'bg-green-500/20 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
+                    {statusText}
                 </div>
-                <div className="flex items-center gap-1 p-1 bg-eburon-panel rounded-lg">
-                    <button onClick={() => setAgentMode('mobile')} className={`p-2 rounded-md ${agentMode === 'mobile' ? 'bg-eburon-accent' : ''}`}>
-                        <PhoneIcon className="w-5 h-5 text-white" />
+                
+                {/* Web Demo Toggle */}
+                <button 
+                    onClick={() => {
+                        if (!isCalling) {
+                            setIsWebDemo(!isWebDemo);
+                            setStatusText('Ready');
+                        }
+                    }}
+                    className={`mt-3 flex items-center gap-2 px-3 py-1 rounded-full border transition-all duration-300 ${isWebDemo ? 'bg-purple-900/30 border-purple-500/50 text-purple-300' : 'bg-transparent border-gray-700 text-gray-500 hover:border-gray-500'}`}
+                    disabled={isCalling}
+                >
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Web Demo</span>
+                    {isWebDemo ? <ToggleOnIcon className="w-4 h-4" /> : <ToggleOffIcon className="w-4 h-4" />}
+                </button>
+            </div>
+
+            {/* Main Content */}
+            <div className="relative z-10 flex-grow flex flex-col items-center justify-center px-6">
+                 {/* Agent Info Display (Only if not in Web Demo, or adapt if needed) */}
+                <div className="mb-4 text-center transition-opacity duration-300" style={{ opacity: isWebDemo ? 0.5 : 1 }}>
+                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Active Agent</div>
+                    <div className="flex items-center gap-2 justify-center bg-gray-800/50 px-3 py-1.5 rounded-full">
+                         <BrainCircuitIcon className={`w-3 h-3 ${isWebDemo ? 'text-purple-400' : 'text-blue-400'}`} />
+                         <span className="font-semibold text-sm">{isWebDemo ? 'Stephen (Live)' : activeAgent.name}</span>
+                    </div>
+                </div>
+
+                {/* Dialpad View */}
+                <div className={`w-full max-w-[300px] flex flex-col gap-4 animate-fade-in transition-all duration-300 ${isWebDemo ? 'opacity-30 pointer-events-none blur-sm' : 'opacity-100'}`}>
+                    {/* Number Display */}
+                    <div className="h-14 flex items-center justify-center mb-2 relative">
+                        <span className="text-4xl font-light tracking-wide truncate">
+                            {phoneNumber}
+                        </span>
+                        {phoneNumber && (
+                            <button 
+                                onClick={handleDelete}
+                                className="absolute right-0 p-2 text-gray-500 hover:text-white transition-colors"
+                            >
+                                ⌫
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-3 justify-items-center">
+                        {DIALPAD_KEYS.map(({ key, sub }) => (
+                            <DialpadKey
+                                key={key}
+                                label={key}
+                                sublabel={sub}
+                                onClick={() => handleDialpadInput(key)}
+                                onLongPress={key === '0' ? () => handleDialpadInput('+') : undefined}
+                            />
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="relative z-10 pb-8 pt-4 flex justify-center items-center gap-8">
+                {isCalling ? (
+                     <button
+                        onClick={handleEndCall}
+                        className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95 bg-red-600 hover:bg-red-500"
+                    >
+                        <PhoneIcon className="w-8 h-8 text-white transform rotate-[135deg]" />
                     </button>
-                    <button onClick={() => setAgentMode('web')} className={`p-2 rounded-md ${agentMode === 'web' ? 'bg-eburon-accent' : ''}`}>
-                        <GlobeIcon className="w-5 h-5 text-white" />
+                ) : (
+                    <button
+                        onClick={handleCall}
+                        className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95 ${isWebDemo ? 'bg-purple-600 hover:bg-purple-500' : 'bg-green-500 hover:bg-green-400'}`}
+                    >
+                         {isWebConnecting ? (
+                             <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                         ) : (
+                             <PhoneIcon className="w-8 h-8 text-white" />
+                         )}
                     </button>
-                </div>
-            </header>
-
-            {agentMode === 'mobile' ? (
-                <>
-                    <div className="p-2 border-y border-eburon-border flex-shrink-0">
-                        <div className={`text-center text-sm transition-colors ${statusColor[statusType]}`}>
-                            {statusText}
-                        </div>
-                    </div>
-
-                    <div className="px-6 pt-2 flex-grow flex flex-col">
-                        <div className="py-2 text-center">
-                            {isLoadingAgent ? (
-                                <p className="text-sm text-eburon-fg/60 h-5">Loading agent...</p>
-                            ) : activeAgent ? (
-                                <p className="text-sm text-eburon-fg/80 h-5">Active Agent: <span className="font-bold text-eburon-accent">{activeAgent.name}</span></p>
-                            ) : (
-                                <p className="text-sm text-eburon-warn h-5">No active agent selected.</p>
-                            )}
-                        </div>
-                        <div className="py-2">
-                            <label className="block text-eburon-fg/80 text-sm font-bold mb-2" htmlFor="phoneNumber">
-                                Phone Number
-                            </label>
-                            <div className="flex space-x-2">
-                                <input
-                                    type="tel"
-                                    id="phoneNumber"
-                                    placeholder="+1234567890"
-                                    className="flex-1 px-3 py-2 bg-eburon-bg border border-eburon-border rounded-lg focus:outline-none focus:ring-2 focus:ring-eburon-accent"
-                                    value={phoneNumber}
-                                    onChange={(e) => setPhoneNumber(e.target.value)}
-                                />
-                                <button
-                                    onClick={() => setPhoneNumber('')}
-                                    className="px-4 py-2 bg-eburon-bg text-eburon-fg rounded-lg hover:bg-eburon-border transition-colors"
-                                >
-                                    <XIcon className="w-5 h-5" />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 mb-4">
-                            {DIALPAD_KEYS.map(({ key, sub }) => (
-                                <DialpadKey
-                                    key={key}
-                                    label={key}
-                                    sublabel={sub}
-                                    onShortPress={() => handleDialpadInput(key)}
-                                    onLongPress={key === '0' ? () => handleDialpadInput('+') : undefined}
-                                />
-                            ))}
-                        </div>
-                        
-                        <div className="mt-auto">
-                            {!callInProgress ? (
-                                <button
-                                    onClick={handleMakeCall}
-                                    disabled={!activeAgent || callInProgress || isLoadingAgent}
-                                    className="w-full bg-eburon-ok hover:opacity-90 text-black py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 flex items-center justify-center space-x-2 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                                >
-                                    <PhoneIcon className="w-5 h-5" />
-                                    <span>Call Customer</span>
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={handleHangup}
-                                    className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                                >
-                                <PhoneIcon className="w-5 h-5 transform rotate-[135deg]" />
-                                    <span>End Call</span>
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="p-4 text-center text-eburon-fg/50 text-sm border-t border-eburon-border flex-shrink-0">
-                        Secure Connection • Eburon
-                    </div>
-                </>
-            ) : (
-                <div className="flex-grow bg-black">
-                    <iframe
-                        src="https://eburon.ai/web-agent/"
-                        className="w-full h-full border-none"
-                        title="Eburon Web Agent Demo"
-                        allow="microphone"
-                    ></iframe>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 };

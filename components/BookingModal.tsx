@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { CrmBooking } from '../types';
 import { SaveIcon, XIcon } from './icons';
@@ -83,7 +84,12 @@ const BookingModal: React.FC<BookingModalProps> = ({ booking, onClose, onSave, e
         <form onSubmit={handleSubmit}>
           <header className="p-4 border-b border-eburon-border flex justify-between items-center">
             <h2 className="text-xl font-bold text-eburon-fg">{isEditing ? 'Edit Booking' : 'Create New Booking'}</h2>
-            <button type="button" onClick={onClose} className="p-1 rounded-full hover:bg-eburon-bg">
+            <button 
+                type="button" 
+                onClick={onClose} 
+                className="p-1 rounded-full hover:bg-eburon-bg"
+                data-tooltip="Close Modal"
+            >
               <XIcon className="w-6 h-6 text-eburon-fg/70" />
             </button>
           </header>

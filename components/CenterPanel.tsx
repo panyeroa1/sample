@@ -1,7 +1,8 @@
+
 import React, { Suspense } from 'react';
 import { ActiveView } from '../types';
 import { LoadingIndicator } from './LoadingIndicator';
-import { MenuIcon } from './icons'; // Assuming MenuIcon is available
+import { MenuIcon } from './icons';
 
 // Lazy load the main view components
 const ChatbotView = React.lazy(() => import('./ChatbotView'));
@@ -11,7 +12,7 @@ const VoicesView = React.lazy(() => import('./VoicesView'));
 const CallLogsView = React.lazy(() => import('./CallLogsView'));
 const TTSStudioView = React.lazy(() => import('./TTSStudioView'));
 const DataImportView = React.lazy(() => import('./DataImportView'));
-
+const AdminSettingsView = React.lazy(() => import('./AdminSettingsView'));
 
 interface CenterPanelProps {
   activeView: ActiveView;
@@ -32,6 +33,8 @@ export const CenterPanel: React.FC<CenterPanelProps> = ({
     [ActiveView.TTSStudio]: "TTS Studio",
     [ActiveView.Chatbot]: "AI Assistant",
     [ActiveView.History]: "Call History",
+    [ActiveView.WebDemo]: "Web Demo",
+    [ActiveView.AdminSettings]: "Admin Settings",
   }
 
   const renderContent = () => {
@@ -50,6 +53,8 @@ export const CenterPanel: React.FC<CenterPanelProps> = ({
         return <CallLogsView />;
       case ActiveView.TTSStudio:
         return <TTSStudioView />;
+      case ActiveView.AdminSettings:
+        return <AdminSettingsView />;
       default:
         return <AgentsView />;
     }
@@ -58,7 +63,11 @@ export const CenterPanel: React.FC<CenterPanelProps> = ({
   return (
     <main className="flex-1 bg-eburon-bg overflow-hidden flex flex-col">
        <header className="flex lg:hidden items-center p-4 h-[73px] border-b border-eburon-border flex-shrink-0">
-          <button onClick={onMenuClick} className="p-2 mr-2 rounded-lg hover:bg-white/10">
+          <button 
+            onClick={onMenuClick} 
+            className="p-2 mr-2 rounded-lg hover:bg-white/10"
+            data-tooltip="Toggle Navigation"
+          >
               <MenuIcon className="w-6 h-6" />
           </button>
           <h1 className="text-xl font-bold">{viewTitles[activeView]}</h1>

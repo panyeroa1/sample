@@ -1,17 +1,17 @@
+
 import * as idbService from './idbService';
 import * as supabaseService from './supabaseService';
 import * as blandAiService from './blandAiService';
 import * as geminiService from './geminiService';
-import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, Feedback, AgentFeedback, LiveTranscript, CrmBooking, TranscriptSegment } from '../types';
+import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, Feedback, AgentFeedback, LiveTranscript, CrmBooking, TranscriptSegment, AgentTool } from '../types';
 import { crmService } from './crmService';
-import { AYLA_DEFAULT_AGENT } from '../constants';
+import { STEPHEN_DEFAULT_AGENT } from '../constants';
 
 type DbMode = 'supabase' | 'indexedDB';
-let dbMode: DbMode = 'supabase'; // Assume online by default
+let dbMode: DbMode = 'supabase'; 
+const FILTER_OUT_NUMBER = '+639056741316';
 
-// --- CSV Parsing Utilities ---
 const parseCSV = (csvText: string): { headers: string[], rows: string[][] } => {
-    // 1. Re-join multiline records. A new record is assumed to start with a UUID.
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
     const allLines = csvText.trim().replace(/\r\n/g, '\n').split('\n');
     
@@ -23,14 +23,12 @@ const parseCSV = (csvText: string): { headers: string[], rows: string[][] } => {
     if (allLines.length > 0) {
         let recordBuffer = '';
         for(const line of allLines) {
-            // A new record starts with a UUID, and is not a continuation line inside a JSON string.
             if (uuidRegex.test(line)) {
                 if (recordBuffer) {
                     singleLineRecords.push(recordBuffer);
                 }
                 recordBuffer = line;
             } else {
-                // Join multiline fields with a space. This assumes newlines within fields are not significant for parsing.
                 recordBuffer += ' ' + line; 
             }
         }
@@ -39,7 +37,6 @@ const parseCSV = (csvText: string): { headers: string[], rows: string[][] } => {
         }
     }
     
-    // 2. Parse each joined line using the original simple parser
     const rows = singleLineRecords.map(line => {
         const fields = [];
         let field = '';
@@ -49,8 +46,8 @@ const parseCSV = (csvText: string): { headers: string[], rows: string[][] } => {
             const char = line[i];
             if (char === '"') {
                 if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-                    field += '"'; // Escaped quote
-                    i++; // Skip the next quote
+                    field += '"';
+                    i++;
                 } else {
                     inQuotes = !inQuotes;
                 }
@@ -85,10 +82,8 @@ const parseTranscriptString = (transcriptStr: string): TranscriptSegment[] => {
             role = 'agent';
             text = stripSsml(trimmedPart.substring(10));
         } else if (trimmedPart.toLowerCase().startsWith('agent-action:')) {
-            role = null; // Ignore agent actions
+            role = null;
         } else if (trimmedPart.length > 0) {
-            // This is likely a continuation from an interruption.
-            // Based on the data, these can be treated as user speech.
             role = 'user';
             text = trimmedPart;
         }
@@ -96,7 +91,7 @@ const parseTranscriptString = (transcriptStr: string): TranscriptSegment[] => {
         return {
             user: role,
             text: text,
-            start_time: 0 // Will be estimated later
+            start_time: 0
         };
     })
     .filter((segment): segment is Omit<TranscriptSegment, 'start_time'> & { user: 'user' | 'agent', start_time: number } => {
@@ -105,7 +100,6 @@ const parseTranscriptString = (transcriptStr: string): TranscriptSegment[] => {
         return true;
     });
 };
-// --- End CSV Parsing Utilities ---
 
 
 export async function initializeDataLayer(): Promise<void> {
@@ -126,6 +120,38 @@ export async function initializeDataLayer(): Promise<void> {
   }
   
   await idbService.initDB();
+  await initializeDefaultTools();
+}
+
+async function initializeDefaultTools() {
+    const existingTools = await getTools();
+    if (existingTools.length === 0) {
+        const defaultTools: AgentTool[] = [
+            {
+                id: 'transfer-call',
+                name: 'Transfer Call',
+                description: 'Transfers the call to a human agent or another number.',
+                method: 'POST',
+                url: 'https://api.bland.ai/v1/calls/transfer',
+                body: JSON.stringify({
+                    phone_number: "+15551234567",
+                    task: "Handle customer support"
+                })
+            },
+            {
+                id: 'check-availability',
+                name: 'Check Availability',
+                description: 'Checks calendar availability for booking.',
+                method: 'POST',
+                url: 'https://api.eburon.ai/tools/calendar/check',
+                body: JSON.stringify({
+                    date: "YYYY-MM-DD",
+                    time: "HH:mm"
+                })
+            }
+        ];
+        await upsertTools(defaultTools);
+    }
 }
 
 // --- AGENTS ---
@@ -156,13 +182,13 @@ export async function getAgents(): Promise<Agent[]> {
     }
 
     const isAnyDbAgentActive = agentsFromDb.some(a => a.isActiveForDialer);
-    const defaultAgentWithState = { ...AYLA_DEFAULT_AGENT, isActiveForDialer: !isAnyDbAgentActive };
+    const defaultAgentWithState = { ...STEPHEN_DEFAULT_AGENT, isActiveForDialer: !isAnyDbAgentActive };
     
     return [defaultAgentWithState, ...agentsFromDb];
 }
 
 export async function setActiveDialerAgent(agentId: string): Promise<void> {
-    if (agentId === AYLA_DEFAULT_AGENT.id) {
+    if (agentId === STEPHEN_DEFAULT_AGENT.id) {
         await deactivateActiveDialerAgent();
         return;
     }
@@ -189,7 +215,7 @@ export async function upsertAgents(agents: Agent[]): Promise<void> {
 }
 
 export async function deleteAgent(agentId: string): Promise<void> {
-    if (agentId === AYLA_DEFAULT_AGENT.id) return;
+    if (agentId === STEPHEN_DEFAULT_AGENT.id) return;
     await idbService.deleteAgentFromIdb(agentId);
     if (dbMode === 'supabase') {
         try {
@@ -199,7 +225,6 @@ export async function deleteAgent(agentId: string): Promise<void> {
         }
     }
 }
-
 
 // --- VOICES ---
 export async function getVoices(): Promise<Voice[]> {
@@ -227,8 +252,13 @@ export async function upsertVoices(voices: Voice[]): Promise<void> {
     await idbService.upsertVoicesToIdb(voices);
 }
 
-export const generateVoiceSample = blandAiService.generateVoiceSample;
-export const generateTtsWithGemini = geminiService.generateTtsWithGemini;
+export async function generateVoiceSample(voiceId: string, text: string, language: string): Promise<Blob> {
+    return blandAiService.generateVoiceSample(voiceId, text, language);
+}
+
+export async function generateTtsWithGemini(text: string, voiceName: string = 'Kore'): Promise<Blob> {
+    return geminiService.generateTtsWithGemini(text, voiceName);
+}
 
 export async function updateVoiceTags(voiceUuid: string, newTags: string[]): Promise<void> {
     const freshVoices = await blandAiService.listVoices();
@@ -271,19 +301,6 @@ export async function loadCallLogsFromCSV(): Promise<CallLog[]> {
         const fullTranscriptText = transcriptSegments.map(segment => `${segment.user}: ${segment.text}`).join('\n');
         const totalDuration = Math.round(parseFloat(rowData.call_length) * 60) || 0;
 
-        if (transcriptSegments.length > 0 && totalDuration > 0) {
-            const totalWords = transcriptSegments.reduce((sum, seg) => sum + seg.text.split(/\s+/).filter(Boolean).length, 0);
-            const wordsPerSecond = totalWords > 0 ? totalWords / totalDuration : 3; // Fallback to 3 WPS
-
-            let cumulativeTime = 0;
-            transcriptSegments.forEach(segment => {
-                segment.start_time = cumulativeTime;
-                const segmentWords = segment.text.split(/\s+/).filter(Boolean).length;
-                const segmentDuration = segmentWords / wordsPerSecond;
-                cumulativeTime += segmentDuration;
-            });
-        }
-
         return {
             call_id: rowData.c_id,
             created_at: rowData.created_at,
@@ -295,41 +312,31 @@ export async function loadCallLogsFromCSV(): Promise<CallLog[]> {
             concatenated_transcript: fullTranscriptText,
             transcript: transcriptSegments,
         };
-    }).filter(log => log.call_id);
+    }).filter(log => log.call_id && log.from !== FILTER_OUT_NUMBER && log.to !== FILTER_OUT_NUMBER);
 }
 
 
 export async function getCallLogs(): Promise<CallLog[]> {
-    if (dbMode === 'supabase') {
-        try {
-            const supabaseLogs = await supabaseService.getCallLogsFromSupabase();
-            await idbService.upsertCallLogsToIdb(supabaseLogs);
-            return supabaseLogs;
-        } catch (error) {
-            console.error("Supabase failed to get call logs, falling back to offline cache", (error as Error).message);
-            dbMode = 'indexedDB';
-        }
-    }
-
-    const cachedLogs = await idbService.getCallLogsFromIdb();
-    if (cachedLogs && cachedLogs.length > 0) {
-        return cachedLogs;
-    }
-    
     try {
-        const csvLogs = await loadCallLogsFromCSV();
-        await upsertCallLogs(csvLogs);
-        return csvLogs;
-    } catch (error) {
-        console.error("Failed to load call logs from data.csv", (error as Error).message);
-        // If CSV fails, try fetching from API as a final fallback
+        const apiLogs = await blandAiService.fetchCallLogs();
+        const filteredLogs = apiLogs.filter(log => log.from !== FILTER_OUT_NUMBER && log.to !== FILTER_OUT_NUMBER);
+        await upsertCallLogs(filteredLogs);
+        return filteredLogs;
+    } catch (apiError) {
+        console.warn("Failed to fetch logs from Bland AI API, checking cache/CSV...", (apiError as Error).message);
+        
+        let logs = await idbService.getCallLogsFromIdb();
+        if (logs && logs.length > 0) {
+            return logs.filter(log => log.from !== FILTER_OUT_NUMBER && log.to !== FILTER_OUT_NUMBER);
+        }
+        
         try {
-            const apiLogs = await blandAiService.fetchCallLogs();
-            await upsertCallLogs(apiLogs);
-            return apiLogs;
-        } catch (apiError) {
-             console.error("Failed to fetch logs from API as well.", (apiError as Error).message);
-             throw new Error(`Could not load call history: ${(apiError as Error).message}`);
+            const csvLogs = await loadCallLogsFromCSV();
+            await upsertCallLogs(csvLogs);
+            return csvLogs;
+        } catch (error) {
+             console.error("Failed to load call logs from data.csv", (error as Error).message);
+             return [];
         }
     }
 }
@@ -361,54 +368,63 @@ export async function clearCallLogs(): Promise<void> {
 export async function getTtsGenerations(): Promise<TtsGeneration[]> {
     if (dbMode === 'supabase') {
         try {
-            const generations = await supabaseService.getTtsGenerations();
-            await idbService.upsertTtsGenerationsToIdb(generations);
-            return generations;
+             const remoteData = await supabaseService.getTtsGenerationsFromSupabase();
+             await idbService.upsertTtsGenerationsToIdb(remoteData); // cache locally
+             return remoteData;
         } catch (error) {
-            console.error("Supabase failed to get TTS generations, falling back to IndexedDB", (error as Error).message);
-            dbMode = 'indexedDB';
+            console.error("Failed to fetch TTS generations from Supabase, falling back to IDB", error);
+            return idbService.getTtsGenerationsFromIdb();
         }
     }
     return idbService.getTtsGenerationsFromIdb();
 }
 
-export async function saveTtsGeneration(inputText: string, audioBlob: Blob): Promise<TtsGeneration> {
+export async function saveTtsGeneration(input_text: string, audioBlob: Blob): Promise<TtsGeneration> {
+    const id = `gen-${Date.now()}`;
+    const created_at = new Date().toISOString();
+    
+    // 1. Optimistically create a local record with a blob URL for immediate UI feedback
+    let audio_url = URL.createObjectURL(audioBlob); 
+    const localRecord: TtsGeneration = { id, input_text, audio_url, created_at };
+    await idbService.upsertTtsGenerationsToIdb([localRecord]);
+
+    // 2. If Online, Upload to Storage and Persist Record
     if (dbMode === 'supabase') {
         try {
-            const audioUrl = await supabaseService.uploadTtsAudio(audioBlob);
-            const saved = await supabaseService.saveTtsGeneration({
-                input_text: inputText,
-                audio_url: audioUrl,
-            });
-            await idbService.upsertTtsGenerationsToIdb([saved]);
-            return saved;
+            const publicUrl = await supabaseService.uploadTtsAudio(audioBlob);
+            
+            const remoteRecord: TtsGeneration = {
+                id,
+                input_text,
+                audio_url: publicUrl, // Persistent public URL
+                created_at
+            };
+            
+            await supabaseService.saveTtsGeneration(remoteRecord);
+            
+            // Update local IDB with the persistent remote URL so it survives page reloads
+            await idbService.upsertTtsGenerationsToIdb([remoteRecord]);
+            
+            return remoteRecord;
         } catch (error) {
-            console.error("Supabase failed to store TTS generation, using local cache instead", (error as Error).message);
-            dbMode = 'indexedDB';
+            console.error("Failed to sync TTS generation to Supabase:", error);
+            // Return local record if sync fails, so UI still works temporarily
         }
     }
 
-    const localUrl = URL.createObjectURL(audioBlob);
-    const newGeneration: TtsGeneration = {
-        id: `local-${Date.now()}`,
-        created_at: new Date().toISOString(),
-        input_text: inputText,
-        audio_url: localUrl,
-    };
-    await idbService.upsertTtsGenerationsToIdb([newGeneration]);
-    return newGeneration;
+    return localRecord;
 }
 
 // --- CHATBOT MESSAGES ---
 export async function getChatbotMessages(): Promise<ChatMessage[]> {
     if (dbMode === 'supabase') {
         try {
-            const messages = await supabaseService.getChatbotMessagesFromSupabase();
-            await idbService.upsertChatbotMessagesToIdb(messages);
-            return messages;
+            const remoteMessages = await supabaseService.getChatbotMessagesFromSupabase();
+            await idbService.upsertChatbotMessagesToIdb(remoteMessages);
+            return remoteMessages;
         } catch (error) {
-            console.error("Supabase failed to get chatbot messages, falling back to IndexedDB", (error as Error).message);
-            dbMode = 'indexedDB';
+             console.error("Failed to fetch Chat history from Supabase, falling back to IDB", error);
+             return idbService.getChatbotMessagesFromIdb();
         }
     }
     return idbService.getChatbotMessagesFromIdb();
@@ -420,7 +436,7 @@ export async function saveChatMessage(message: ChatMessage): Promise<void> {
         try {
             await supabaseService.upsertChatbotMessageToSupabase(message);
         } catch (error) {
-            console.error("Supabase failed to save chatbot message", (error as Error).message);
+            console.error("Failed to sync chat message to Supabase", error);
         }
     }
 }
@@ -431,7 +447,7 @@ export async function clearChatbotMessages(): Promise<void> {
         try {
             await supabaseService.clearChatbotMessagesFromSupabase();
         } catch (error) {
-            console.error("Supabase failed to clear chatbot messages", (error as Error).message);
+            console.error("Failed to clear chat history from Supabase", error);
         }
     }
 }
@@ -473,61 +489,96 @@ export async function submitAgentFeedback(
 export async function getCrmBookings(): Promise<CrmBooking[]> {
     if (dbMode === 'supabase') {
         try {
-            const bookings = await supabaseService.getCrmBookingsFromSupabase();
-            await idbService.upsertCrmBookingsToIdb(bookings);
-            crmService.setBookings(bookings);
-            return bookings;
+             // Assuming we sync CRM data to Supabase table `crm_bookings`
+             return await supabaseService.getCrmBookingsFromSupabase();
         } catch (error) {
-            console.error("Supabase failed to load CRM bookings, falling back to offline cache", (error as Error).message);
-            dbMode = 'indexedDB';
+             console.warn("Supabase CRM fetch failed, checking fallback", error);
+             // Fallback to crmService's internal/mock data for now if API fails or isn't set up
+             return crmService.getBookings();
         }
     }
-
-    const cachedBookings = await idbService.getCrmBookingsFromIdb();
-    if (cachedBookings.length > 0) {
-        crmService.setBookings(cachedBookings);
-        return cachedBookings;
-    }
-
-    const seeded = crmService.getBookings();
-    await idbService.upsertCrmBookingsToIdb(seeded);
-    return seeded;
+    return crmService.getBookings();
 }
 
 export async function createCrmBooking(booking: CrmBooking): Promise<CrmBooking> {
-    const newBooking = crmService.addBooking(booking);
-    await idbService.upsertCrmBookingsToIdb([newBooking]);
+    const result = crmService.addBooking(booking); // Update local state
     if (dbMode === 'supabase') {
         try {
-            await supabaseService.upsertCrmBookingToSupabase(newBooking);
-        } catch (error) {
-            console.error("Supabase failed to create CRM booking", (error as Error).message);
+            await supabaseService.upsertCrmBookingToSupabase(booking);
+        } catch (e) {
+            console.error("Failed to sync CRM creation to Supabase", e);
         }
     }
-    return newBooking;
+    return result;
 }
 
 export async function updateCrmBooking(pnr: string, updates: Partial<CrmBooking>): Promise<CrmBooking> {
-    const updatedBooking = crmService.updateBooking(pnr, updates);
-    await idbService.upsertCrmBookingsToIdb([updatedBooking]);
+    const result = crmService.updateBooking(pnr, updates); // Update local state
     if (dbMode === 'supabase') {
         try {
-            await supabaseService.upsertCrmBookingToSupabase(updatedBooking);
-        } catch (error) {
-            console.error("Supabase failed to update CRM booking", (error as Error).message);
+            await supabaseService.upsertCrmBookingToSupabase(result);
+        } catch (e) {
+             console.error("Failed to sync CRM update to Supabase", e);
         }
     }
-    return updatedBooking;
+    return result;
 }
 
 export async function deleteCrmBooking(pnr: string): Promise<void> {
-    crmService.deleteBooking(pnr);
-    await idbService.deleteCrmBookingFromIdb(pnr);
+    crmService.deleteBooking(pnr); // Update local state
+    if (dbMode === 'supabase') {
+         try {
+            await supabaseService.deleteCrmBookingFromSupabase(pnr);
+         } catch (e) {
+              console.error("Failed to sync CRM deletion to Supabase", e);
+         }
+    }
+}
+
+// --- TOOLS ---
+export async function getTools(): Promise<AgentTool[]> {
     if (dbMode === 'supabase') {
         try {
-            await supabaseService.deleteCrmBookingFromSupabase(pnr);
+             const tools = await supabaseService.getToolsFromSupabase();
+             await idbService.upsertToolsToIdb(tools);
+             return tools;
         } catch (error) {
-            console.error("Supabase failed to delete CRM booking", (error as Error).message);
+            console.error("Supabase tools fetch failed, falling back to IDB", error);
+            return idbService.getToolsFromIdb();
+        }
+    }
+    return idbService.getToolsFromIdb();
+}
+
+export async function saveTool(tool: AgentTool): Promise<void> {
+    await idbService.upsertToolsToIdb([tool]);
+    if (dbMode === 'supabase') {
+        try {
+            await supabaseService.upsertToolsToSupabase([tool]);
+        } catch (error) {
+            console.error("Failed to sync tool to Supabase", error);
+        }
+    }
+}
+
+export async function upsertTools(tools: AgentTool[]): Promise<void> {
+    await idbService.upsertToolsToIdb(tools);
+    if (dbMode === 'supabase') {
+        try {
+            await supabaseService.upsertToolsToSupabase(tools);
+        } catch (error) {
+            console.error("Failed to sync tools to Supabase", error);
+        }
+    }
+}
+
+export async function deleteTool(toolId: string): Promise<void> {
+    await idbService.deleteToolFromIdb(toolId);
+    if (dbMode === 'supabase') {
+        try {
+            await supabaseService.deleteToolFromSupabase(toolId);
+        } catch (error) {
+            console.error("Failed to sync tool deletion to Supabase", error);
         }
     }
 }

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { supabase } from '../services/supabaseService';
 import { GoogleIcon, MailIcon, LockIcon } from './icons';
@@ -43,13 +44,15 @@ const AuthPage: React.FC = () => {
         }
     };
     
-    // Note: Supabase Google OAuth is configured in your Supabase project's dashboard.
-    // The GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are used there and are not needed in the frontend code.
     const handleGoogleSignIn = async () => {
         setLoading(true);
         setError(null);
+        // Using window.location.origin ensures the redirect comes back to the correct deployment (localhost or production)
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
+            options: {
+                redirectTo: window.location.origin
+            }
         });
         if (error) {
             setError(error.message);

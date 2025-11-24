@@ -1,111 +1,97 @@
-import { createClient } from '@supabase/supabase-js';
-import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, AgentFeedback, CrmBooking } from '../types';
 
-// Use environment variables for Supabase credentials
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Agent, Voice, CallLog, TtsGeneration, ChatMessage, AgentFeedback, CrmBooking, AgentTool } from '../types';
+import { getConfig } from './configService';
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  throw new Error('Supabase credentials are missing. Please set SUPABASE_URL and SUPABASE_KEY in your environment.');
-}
+let supabaseInstance: SupabaseClient | null = null;
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const getSupabase = (): SupabaseClient => {
+  if (supabaseInstance) return supabaseInstance;
 
-// AGENTS
+  const config = getConfig();
+  // Fallback to defaults if config is empty (should ideally come from config service defaults)
+  const url = config.apiKeys.supabaseUrl;
+  const key = config.apiKeys.supabaseKey;
+
+  if (!url || !key) {
+      console.warn("Supabase credentials missing in config. Using hardcoded fallbacks for demo.");
+      supabaseInstance = createClient(
+          'https://xibssyjivjzcjmleupsb.supabase.co',
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhpYnNzeWppdmp6Y2ptbGV1cHNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4MTMzNjAsImV4cCI6MjA3ODM4OTM2MH0.2HEI12clyZRZ3gM0sUvGq5nFLkGUKKhcfPKyFUMDk34'
+      );
+  } else {
+      supabaseInstance = createClient(url, key);
+  }
+  
+  return supabaseInstance;
+};
+
+// Export a proxy to always use the current instance or create one
+export const supabase = new Proxy({} as SupabaseClient, {
+    get: (_target, prop) => {
+        const client = getSupabase();
+        return (client as any)[prop];
+    }
+});
+
+
+// Force recreation of client if config changes
+window.addEventListener('eburon-config-changed', () => {
+    supabaseInstance = null;
+});
+
+// === AGENTS ===
 export const getAgentsFromSupabase = async (): Promise<Agent[]> => {
     const { data, error } = await supabase.from('agents').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     // Map snake_case from DB to camelCase in application
-    return data.map(agent => ({
+    return data.map((agent: any) => ({
         id: agent.id,
         name: agent.name,
-        description: agent.description || '', // Fallback for missing column
+        description: agent.description || '', 
         voice: agent.voice,
         systemPrompt: agent.system_prompt,
         firstSentence: agent.first_sentence || '',
         thinkingMode: agent.thinking_mode,
-        avatarUrl: null, // The 'avatar_url' column does not exist in the schema.
+        avatarUrl: agent.avatar_url || null,
         tools: agent.tools || [],
-        isActiveForDialer: false, // The 'is_active_for_dialer' column does not exist. Default to false.
+        isActiveForDialer: agent.is_active_for_dialer || false,
     }));
 };
 
-export const getActiveDialerAgentFromSupabase = async (): Promise<Agent | null> => {
-    // The is_active_for_dialer column does not exist in the current Supabase schema.
-    // This feature is managed locally via IndexedDB. Returning null to allow fallback.
-    return null;
-};
-
-export const setActiveDialerAgentInSupabase = async (agentId: string): Promise<void> => {
-    // The is_active_for_dialer column does not exist in the current Supabase schema.
-    // This is a no-op. State is managed locally via IndexedDB.
-    return;
-};
-
-export const deactivateActiveDialerAgentInSupabase = async (): Promise<void> => {
-    // The is_active_for_dialer column does not exist in the current Supabase schema.
-    // This is a no-op. State is managed locally via IndexedDB.
-    return;
-};
-
 export const upsertAgentsToSupabase = async (agents: Agent[]): Promise<Agent[]> => {
-    const newAgentPayloads: any[] = [];
-    const existingAgents: Agent[] = [];
+    const payloads = agents.map(agent => ({
+        id: agent.id,
+        name: agent.name,
+        description: agent.description,
+        voice: agent.voice,
+        system_prompt: agent.systemPrompt,
+        first_sentence: agent.firstSentence,
+        thinking_mode: agent.thinkingMode,
+        avatar_url: agent.avatarUrl,
+        tools: agent.tools || [],
+        is_active_for_dialer: agent.isActiveForDialer
+    }));
 
-    for (const agent of agents) {
-        if (agent.id.startsWith('new-agent-')) {
-            const { id, description, systemPrompt, firstSentence, thinkingMode, avatarUrl, isActiveForDialer, ...rest } = agent;
-            newAgentPayloads.push({
-                ...rest,
-                system_prompt: systemPrompt,
-                first_sentence: firstSentence,
-                thinking_mode: thinkingMode,
-            });
-        } else {
-            existingAgents.push(agent);
-        }
-    }
-    
-    let createdAgents: Agent[] = [];
+    const { data, error } = await supabase.from('agents').upsert(payloads).select();
 
-    if (newAgentPayloads.length > 0) {
-        const { data, error } = await supabase.from('agents').insert(newAgentPayloads).select();
-        if (error) {
-            console.error("Supabase failed to insert new agents:", error);
-            throw error;
-        }
-        createdAgents = data.map(dbAgent => ({
-            id: dbAgent.id,
-            name: dbAgent.name,
-            description: dbAgent.description || '',
-            voice: dbAgent.voice,
-            systemPrompt: dbAgent.system_prompt,
-            firstSentence: dbAgent.first_sentence || '',
-            thinkingMode: dbAgent.thinking_mode,
-            avatarUrl: null,
-            tools: dbAgent.tools || [],
-            isActiveForDialer: false,
-        }));
+    if (error) {
+        console.error("Supabase failed to upsert agents:", error);
+        throw error;
     }
 
-    if (existingAgents.length > 0) {
-        const existingAgentsForSupabase = existingAgents.map(agent => {
-            const { description, systemPrompt, firstSentence, thinkingMode, avatarUrl, isActiveForDialer, ...rest } = agent;
-            return {
-                ...rest,
-                system_prompt: systemPrompt,
-                first_sentence: firstSentence,
-                thinking_mode: thinkingMode,
-            };
-        });
-        const { error } = await supabase.from('agents').upsert(existingAgentsForSupabase, { onConflict: 'id' });
-        if (error) {
-            console.error("Supabase failed to upsert existing agents:", error);
-            throw error;
-        }
-    }
-
-    return [...createdAgents, ...existingAgents];
+    return data.map((agent: any) => ({
+        id: agent.id,
+        name: agent.name,
+        description: agent.description || '',
+        voice: agent.voice,
+        systemPrompt: agent.system_prompt,
+        firstSentence: agent.first_sentence || '',
+        thinkingMode: agent.thinking_mode,
+        avatarUrl: agent.avatar_url || null,
+        tools: agent.tools || [],
+        isActiveForDialer: agent.is_active_for_dialer || false,
+    }));
 };
 
 
@@ -114,9 +100,12 @@ export const updateAgentInSupabase = async (agent: Agent) => {
     const { id, description, systemPrompt, firstSentence, thinkingMode, avatarUrl, isActiveForDialer, ...rest } = agent;
     const updatePayload = {
         ...rest, // includes name, voice, tools
+        description,
         system_prompt: systemPrompt,
         first_sentence: firstSentence,
         thinking_mode: thinkingMode,
+        avatar_url: avatarUrl,
+        is_active_for_dialer: isActiveForDialer
     };
     
     const { error } = await supabase.from('agents').update(updatePayload).eq('id', agent.id);
@@ -128,12 +117,7 @@ export const deleteAgentFromSupabase = async (agentId: string) => {
     if (error) throw error;
 };
 
-// VOICES
-// FIX: The 'public.voices' table does not exist in Supabase.
-// The functions getVoicesFromSupabase and upsertVoicesToSupabase have been removed to prevent errors.
-// Voice data is fetched from the Bland AI API and cached in IndexedDB.
-// Custom voice tags are still managed in Supabase via the 'voices_tags_backup' table.
-
+// === VOICES ===
 export const saveEmotionTagForVoice = async (voiceId: string, emotionTag: string): Promise<void> => {
     // Fetch existing tags first
     const { data: existingData, error: selectError } = await supabase
@@ -168,13 +152,12 @@ export const saveEmotionTagForVoice = async (voiceId: string, emotionTag: string
 export const getCustomVoiceTags = async (): Promise<Map<string, string[]>> => {
     const { data, error } = await supabase.from('voices_tags_backup').select('id, tags');
     if (error) {
-        // Let the caller handle the error. This provides more flexibility and better error reporting.
         throw error;
     }
     const tagMap = new Map<string, string[]>();
-    data.forEach(item => {
+    data.forEach((item: any) => {
         if (item.id && item.tags) {
-            tagMap.set(item.id, item.tags.split(',').map(t => t.trim()).filter(Boolean));
+            tagMap.set(item.id, item.tags.split(',').map((t: string) => t.trim()).filter(Boolean));
         }
     });
     return tagMap;
@@ -190,7 +173,7 @@ export const updateCustomVoiceTags = async (voiceId: string, tags: string[]): Pr
 };
 
 
-// CALL LOGS
+// === CALL LOGS ===
 export const getCallLogsFromSupabase = async (): Promise<CallLog[]> => {
     const { data, error } = await supabase.from('call_logs').select('*').order('created_at', { ascending: false });
     if (error) throw error;
@@ -198,8 +181,6 @@ export const getCallLogsFromSupabase = async (): Promise<CallLog[]> => {
 }
 
 export const upsertCallLogsToSupabase = async (logs: CallLog[]) => {
-    // FIX: The 'summary' column does not exist in the Supabase schema for 'call_logs'.
-    // Removed it from the payload to prevent the upsert operation from failing.
     const sanitizedLogs = logs.map(log => ({
         call_id: log.call_id,
         created_at: log.created_at,
@@ -220,7 +201,6 @@ export const clearCallLogsFromSupabase = async (): Promise<void> => {
 }
 
 // === FILE STORAGE ===
-// FIX: Corrected storage bucket name to 'eburon-files' to resolve 'Bucket not found' errors.
 const FILE_BUCKET = 'eburon-files';
 
 // Helper to determine file extension from MIME type
@@ -229,7 +209,9 @@ const getExtensionFromMimeType = (mimeType: string) => {
     if (mimeType.includes('mpeg')) return 'mp3';
     if (mimeType.includes('wav')) return 'wav';
     if (mimeType.includes('ogg')) return 'ogg';
-    return mimeType.split('/')[1] || 'audio';
+    if (mimeType.includes('png')) return 'png';
+    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg';
+    return mimeType.split('/')[1] || 'bin';
 };
 
 
@@ -238,7 +220,7 @@ export const uploadAgentAvatar = async (
   imageFile: File
 ): Promise<string> => {
   const fileExtension = imageFile.name.split('.').pop() || 'png';
-  const fileName = `public/agent-avatars/${agentId}/avatar.${fileExtension}`;
+  const fileName = `agent-avatars/${agentId}/avatar.${fileExtension}`;
 
   const { error } = await supabase.storage
     .from(FILE_BUCKET)
@@ -259,7 +241,7 @@ export const uploadAudioSample = async (
   audioBlob: Blob
 ): Promise<string> => {
   const extension = getExtensionFromMimeType(audioBlob.type);
-  const fileName = `public/voice-previews/${voiceName.toLowerCase().replace(/ /g, '_')}_${Date.now()}.${extension}`;
+  const fileName = `voice-previews/${voiceName.toLowerCase().replace(/ /g, '_')}_${Date.now()}.${extension}`;
 
   const { error } = await supabase.storage
     .from(FILE_BUCKET)
@@ -275,13 +257,13 @@ export const uploadAudioSample = async (
 };
 
 // === TTS STUDIO ===
-const TTS_AUDIO_BUCKET_PATH = 'tts-generations';
+const TTS_AUDIO_FOLDER = 'tts-generations';
 
 export const uploadTtsAudio = async (
   audioBlob: Blob
 ): Promise<string> => {
   const extension = getExtensionFromMimeType(audioBlob.type);
-  const fileName = `public/${TTS_AUDIO_BUCKET_PATH}/${Date.now()}.${extension}`;
+  const fileName = `${TTS_AUDIO_FOLDER}/${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
 
   const { error } = await supabase.storage
     .from(FILE_BUCKET)
@@ -296,27 +278,23 @@ export const uploadTtsAudio = async (
   return data.publicUrl;
 };
 
-export const saveTtsGeneration = async (generation: {
-    input_text: string,
-    audio_url: string,
-}): Promise<TtsGeneration> => {
-    const { data, error } = await supabase.from('tts_generations').insert([generation]).select();
+export const saveTtsGeneration = async (generation: TtsGeneration): Promise<void> => {
+    const { error } = await supabase.from('tts_generations').insert([generation]);
     if (error) throw error;
-    return data[0];
 };
 
-export const getTtsGenerations = async (): Promise<TtsGeneration[]> => {
-    const { data, error } = await supabase.from('tts_generations').select('*').order('created_at', { ascending: false }).limit(50);
+export const getTtsGenerationsFromSupabase = async (): Promise<TtsGeneration[]> => {
+    const { data, error } = await supabase.from('tts_generations').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     return data;
 }
 
 // === CHATBOT ===
-const CHAT_IMAGES_BUCKET_PATH = 'chat-images';
+const CHAT_IMAGES_FOLDER = 'chat-images';
 
 export const uploadChatImage = async (imageFile: File): Promise<string> => {
     const fileExtension = imageFile.name.split('.').pop() || 'png';
-    const fileName = `public/${CHAT_IMAGES_BUCKET_PATH}/${Date.now()}.${fileExtension}`;
+    const fileName = `${CHAT_IMAGES_FOLDER}/${Date.now()}.${fileExtension}`;
     
     const { error } = await supabase.storage
         .from(FILE_BUCKET)
@@ -334,11 +312,13 @@ export const uploadChatImage = async (imageFile: File): Promise<string> => {
 export const getChatbotMessagesFromSupabase = async (): Promise<ChatMessage[]> => {
     const { data, error } = await supabase.from('chatbot_messages').select('*').order('created_at', { ascending: true });
     if (error) throw error;
-    return data.map(msg => ({
+    return data.map((msg: any) => ({
         id: msg.id,
         role: msg.role,
         text: msg.text,
         imageUrl: msg.image_url,
+        groundingChunks: msg.grounding_chunks,
+        telemetry: msg.telemetry
     }));
 };
 
@@ -348,16 +328,86 @@ export const upsertChatbotMessageToSupabase = async (message: ChatMessage) => {
         role: message.role,
         text: message.text,
         image_url: message.imageUrl,
+        grounding_chunks: message.groundingChunks,
+        telemetry: message.telemetry
     });
     if (error) throw error;
 };
 
 export const clearChatbotMessagesFromSupabase = async (): Promise<void> => {
-    // Using `neq` with a value that doesn't exist (`system`) effectively targets all rows.
-    // This is more efficient and robust than deleting by 'user' and 'model' roles separately.
     const { error } = await supabase.from('chatbot_messages').delete().neq('role', 'system');
     if (error) throw error;
 };
+
+// === TOOLS ===
+export const getToolsFromSupabase = async (): Promise<AgentTool[]> => {
+    const { data, error } = await supabase.from('tools').select('*');
+    if (error) throw error;
+    return data;
+};
+
+export const upsertToolsToSupabase = async (tools: AgentTool[]): Promise<void> => {
+    const { error } = await supabase.from('tools').upsert(tools);
+    if (error) throw error;
+};
+
+export const deleteToolFromSupabase = async (toolId: string): Promise<void> => {
+    const { error } = await supabase.from('tools').delete().eq('id', toolId);
+    if (error) throw error;
+};
+
+// === CRM ===
+export const getCrmBookingsFromSupabase = async (): Promise<CrmBooking[]> => {
+    const { data, error } = await supabase.from('crm_bookings').select('*');
+    if (error) throw error;
+    return data;
+};
+
+export const upsertCrmBookingToSupabase = async (booking: CrmBooking): Promise<void> => {
+    const { error } = await supabase.from('crm_bookings').upsert(booking);
+    if (error) throw error;
+};
+
+export const deleteCrmBookingFromSupabase = async (pnr: string): Promise<void> => {
+    const { error } = await supabase.from('crm_bookings').delete().eq('pnr', pnr);
+    if (error) throw error;
+};
+
+// === MEMORY & RECALL ===
+export interface AgentMemory {
+    id: string;
+    phone_number: string;
+    note: string;
+    created_at: string;
+    session_id?: string;
+}
+
+export const getAgentMemoryFromSupabase = async (phoneNumber: string): Promise<AgentMemory[]> => {
+    const { data, error } = await supabase
+        .from('agent_memory')
+        .select('*')
+        .eq('phone_number', phoneNumber)
+        .order('created_at', { ascending: true });
+    
+    if (error) {
+        // This likely means table doesn't exist yet. Return empty without throwing.
+        console.warn("Could not fetch memory (Table might not exist):", error.message);
+        return []; 
+    }
+    return data;
+};
+
+export const saveAgentMemoryToSupabase = async (phoneNumber: string, note: string, sessionId: string): Promise<void> => {
+    const { error } = await supabase.from('agent_memory').insert({
+        phone_number: phoneNumber,
+        note: note,
+        session_id: sessionId
+    });
+    if (error) {
+        console.error("Failed to save agent memory:", error.message);
+    }
+};
+
 
 // === FEEDBACK ===
 export const saveFeedbackToSupabase = async (feedbackText: string): Promise<void> => {
@@ -365,37 +415,75 @@ export const saveFeedbackToSupabase = async (feedbackText: string): Promise<void
     if (error) throw error;
 };
 
-// === AGENT FEEDBACK ===
 export const saveAgentFeedbackToSupabase = async (feedback: Omit<AgentFeedback, 'id' | 'created_at'>): Promise<void> => {
     const { error } = await supabase.from('agent_feedback').insert([
         {
             agent_id: feedback.agent_id,
             session_id: feedback.session_id,
-            transcript: feedback.transcript, // assuming 'transcript' column is of type jsonb
+            transcript: feedback.transcript, 
             feedback_text: feedback.feedback_text,
         }
     ]);
     if (error) throw error;
 };
 
-// === CRM BOOKINGS ===
-export const getCrmBookingsFromSupabase = async (): Promise<CrmBooking[]> => {
-    const { data, error } = await supabase
-        .from('crm_bookings')
-        .select('*')
-        .order('flight_date', { ascending: true });
-    if (error) throw error;
-    return data || [];
+// === IMPORT / EXPORT UTILITIES ===
+const formatValueForCSV = (val: any): string => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'object') {
+        // Escape double quotes for CSV format
+        return JSON.stringify(val).replace(/"/g, '""');
+    }
+    return String(val).replace(/"/g, '""');
 };
 
-export const upsertCrmBookingToSupabase = async (booking: CrmBooking): Promise<void> => {
-    const { error } = await supabase
-        .from('crm_bookings')
-        .upsert(booking, { onConflict: 'pnr' });
+export const exportTableToCSV = async (tableName: string): Promise<string> => {
+    const { data, error } = await supabase.from(tableName).select('*');
     if (error) throw error;
+    if (!data || data.length === 0) return '';
+
+    const headers = Object.keys(data[0]);
+    const csvRows = [
+        headers.join(','),
+        ...data.map((row: any) => 
+            headers.map(fieldName => `"${formatValueForCSV(row[fieldName])}"`).join(',')
+        )
+    ];
+
+    return csvRows.join('\n');
 };
 
-export const deleteCrmBookingFromSupabase = async (pnr: string): Promise<void> => {
-    const { error } = await supabase.from('crm_bookings').delete().eq('pnr', pnr);
+const parseCSV = (text: string): any[] => {
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+    
+    return lines.slice(1).map(line => {
+        const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+        
+        return headers.reduce((obj: any, header, index) => {
+            let val = values[index] ? values[index].replace(/^"|"$/g, '') : '';
+            val = val.replace(/""/g, '"');
+            
+            if ((val.startsWith('{') && val.endsWith('}')) || (val.startsWith('[') && val.endsWith(']'))) {
+                try {
+                    obj[header] = JSON.parse(val);
+                } catch {
+                    obj[header] = val;
+                }
+            } else {
+                obj[header] = val;
+            }
+            return obj;
+        }, {});
+    });
+};
+
+export const importCSVToTable = async (tableName: string, csvText: string) => {
+    const data = parseCSV(csvText);
+    if (data.length === 0) throw new Error("No data found in CSV");
+
+    const { error, count } = await supabase.from(tableName).upsert(data, { count: 'exact' });
+    
     if (error) throw error;
+    return { success: true, count };
 };

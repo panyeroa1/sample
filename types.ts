@@ -1,39 +1,6 @@
+
 import React from 'react';
 import { Session } from '@supabase/supabase-js';
-
-// FIX: The global JSX declaration for 'vapi-widget' was overriding all default HTML and SVG element types from React, causing widespread TypeScript errors.
-// Since 'vapi-widget' is not used in the provided components, this declaration has been removed to restore the standard JSX types.
-/*
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'vapi-widget': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement> & {
-        'public-key'?: string;
-        'assistant-id'?: string;
-        mode?: string;
-        theme?: string;
-        'base-bg-color'?: string;
-        'accent-color'?: string;
-        'cta-button-color'?: string;
-        'cta-button-text-color'?: string;
-        'border-radius'?: string;
-        size?: string;
-        position?: string;
-        title?: string;
-        'start-button-text'?: string;
-        'end-button-text'?: string;
-        'chat-first-message'?: string;
-        'chat-placeholder'?: string;
-        'voice-show-transcript'?: string;
-        'consent-required'?: string;
-        'consent-title'?: string;
-        'consent-content'?: string;
-        'consent-storage-key'?: string;
-      }, HTMLElement>;
-    }
-  }
-}
-*/
 
 export enum ActiveView {
   History = 'History',
@@ -43,9 +10,46 @@ export enum ActiveView {
   Voices = 'Voices',
   TTSStudio = 'TTSStudio',
   Chatbot = 'Chatbot',
+  WebDemo = 'WebDemo',
+  AdminSettings = 'AdminSettings', // New Admin View
 }
 
 export type AuthSession = Session | null;
+
+export type AiProvider = 'gemini' | 'ollama';
+
+export interface AppConfig {
+  modules: {
+    showAgents: boolean;
+    showCRM: boolean;
+    showDataImport: boolean;
+    showVoices: boolean;
+    showTTS: boolean;
+    showChatbot: boolean;
+    showHistory: boolean;
+    showWebDemo: boolean;
+  };
+  apiKeys: {
+    geminiApiKey: string;
+    blandApiKey: string;
+    blandEncryptedKey: string;
+    supabaseUrl: string;
+    supabaseKey: string;
+    vapiPublicKey: string;
+    deepgramApiKey: string;
+  };
+  services: {
+    ollamaBaseUrl: string;
+    ollamaModel: string;
+    ollamaType: 'local' | 'cloud';
+    ollamaApiKey: string;
+  };
+  chatbot: {
+    enableSearch: boolean;
+    enableThinking: boolean;
+    enableMaps: boolean;
+  };
+}
 
 export interface Template {
   id: string;
@@ -75,6 +79,7 @@ export interface TelemetryData {
   tokensUsed?: number;
   energy?: string;
   wps?: number;
+  model?: string;
 }
 
 export interface ChatMessage {
@@ -87,6 +92,17 @@ export interface ChatMessage {
   telemetry?: TelemetryData;
 }
 
+export interface AgentTool {
+  id: string;
+  name: string;
+  description: string;
+  method: 'GET' | 'POST';
+  url: string;
+  headers?: string; // JSON string
+  body?: string; // JSON string (schema)
+  timeout?: number;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -96,7 +112,7 @@ export interface Agent {
   firstSentence: string;
   thinkingMode: boolean;
   avatarUrl: string | null;
-  tools?: any[];
+  tools?: string[]; // Array of Tool IDs
   isActiveForDialer?: boolean;
 }
 
@@ -174,4 +190,41 @@ export interface ToolCallData {
     name: string;
     args: any;
     timestamp: number;
+}
+
+export interface OllamaSettings {
+    type: 'local' | 'cloud';
+    baseUrl: string;
+    apiKey?: string;
+    model: string;
+}
+
+export interface OllamaModel {
+    name: string;
+    model: string;
+    modified_at: string;
+    size: number;
+    digest: string;
+    details: {
+        parent_model: string;
+        format: string;
+        family: string;
+        families: string[];
+        parameter_size: string;
+        quantization_level: string;
+    }
+}
+
+export interface SystemPromptTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: 'Customer Service' | 'Sales' | 'Technical' | 'Creative' | 'Other' | 'Airline/Travel';
+  content: string;
+}
+
+export interface InboundConfiguration {
+    phone_number: string;
+    agent_id: string;
+    last_updated: string;
 }

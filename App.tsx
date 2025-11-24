@@ -1,16 +1,22 @@
+
 // FIX: Corrected React import to include necessary hooks and components.
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { LeftSidebar } from './components/LeftSidebar';
 import { CenterPanel } from './components/CenterPanel';
 import { RightSidebar } from './components/RightSidebar';
-import { ActiveView } from './types';
+import { ActiveView, Template } from './types';
 import { initializeDataLayer } from './services/dataService';
 import { LoadingIndicator } from './components/LoadingIndicator';
 import { CallProvider } from './contexts/CallContext';
 import { GlobalCallIndicator } from './components/GlobalCallIndicator';
 import FeedbackModal from './components/FeedbackModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ConfigProvider } from './contexts/ConfigContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import AuthPage from './components/AuthPage';
+import { LandingPage } from './components/LandingPage';
+
+const WebDemoView = React.lazy(() => import('./components/WebDemoView'));
 
 const MainLayout: React.FC = () => {
   const [activeView, setActiveView] = useState<ActiveView>(ActiveView.Agents);
@@ -18,6 +24,7 @@ const MainLayout: React.FC = () => {
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
   const [isDataLayerInitialized, setIsDataLayerInitialized] = useState(false);
   const [generatedAppHtml, setGeneratedAppHtml] = useState<string | null>(null);
+  const [templateForDemo, setTemplateForDemo] = useState<Template | null>(null);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const { signOut } = useAuth();
   
@@ -37,10 +44,21 @@ const MainLayout: React.FC = () => {
       <LoadingIndicator text="Initializing Eburon Studio..." size="large" />
     );
   }
+  
+  if (templateForDemo && activeView === ActiveView.WebDemo) {
+    return (
+      <Suspense fallback={<LoadingIndicator text="Loading Web Agent Demo..." size="large" />}>
+        <WebDemoView template={templateForDemo} onEndDemo={() => {
+          setTemplateForDemo(null);
+          setActiveView(ActiveView.Agents);
+        }} />
+      </Suspense>
+    );
+  }
 
   return (
     <CallProvider activeView={activeView}>
-      <div className="h-dvh w-screen flex bg-eburon-bg text-eburon-fg overflow-hidden relative">
+      <div className="h-dvh w-screen flex bg-eburon-bg text-eburon-fg overflow-hidden relative transition-colors duration-300">
         {/* Overlay for mobile sidebar */}
         {isLeftSidebarOpen && (
             <div 
@@ -93,19 +111,39 @@ const MainLayout: React.FC = () => {
 
 const AppContent: React.FC = () => {
   const { session, loading } = useAuth();
+  const [showLanding, setShowLanding] = useState(!session);
+
+  // Update showLanding when session changes (e.g. after login)
+  useEffect(() => {
+    if (session) {
+      setShowLanding(false);
+    }
+  }, [session]);
 
   if (loading) {
     return <LoadingIndicator text="Authenticating..." size="large" />;
   }
 
-  return session ? <MainLayout /> : <AuthPage />;
+  if (session) {
+    return <MainLayout />;
+  }
+
+  if (showLanding) {
+      return <LandingPage onEnterApp={() => setShowLanding(false)} />;
+  }
+
+  return <AuthPage />;
 }
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ConfigProvider>
+          <AppContent />
+        </ConfigProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
