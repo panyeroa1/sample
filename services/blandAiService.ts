@@ -1,9 +1,7 @@
 
 import { CallLog, Voice, Agent } from "../types";
-import { STEPHEN_PROMPT } from "../constants";
+import { STEPHEN_PROMPT, AYLA_PROMPT } from "../constants";
 import { getConfig } from "./configService";
-// Remove static import to avoid circular dependency
-// import * as dataService from './dataService';
 
 const EBURON_ERROR_MESSAGE = "The Phone API service encountered an error. Please try again.";
 
@@ -219,11 +217,27 @@ export const placeCall = async (phoneNumber: string, agent: Agent): Promise<{ su
              }).filter(Boolean);
         }
 
-        // Use Stephen's Prompt if it's the default Stephen agent, otherwise use agent's prompt
-        const promptToUse = agent.id === 'default-stephen-agent' ? STEPHEN_PROMPT : agent.systemPrompt;
+        // Determine Prompt
+        let promptToUse = agent.systemPrompt;
+        // Check if it's the default Ayla ID or similar variants
+        if (agent.id === 'default-ayla-agent' || agent.id === 'default-stephen-agent') {
+             promptToUse = AYLA_PROMPT;
+        }
+
+        // Determine Voice
+        // Bland AI requires specific voice IDs/names. It DOES NOT support Gemini names like 'Aoede' or 'Kore'.
+        // We must map them to a valid Bland voice.
+        let voiceToUse = agent.voice;
+        const lowerVoice = agent.voice.toLowerCase();
+
+        if (['aoede', 'kore', 'leda', 'ayla'].some(v => lowerVoice.includes(v))) {
+            voiceToUse = 'maya'; // 'maya' is a reliable female voice on Bland
+        } else if (['puck', 'charon', 'fenrir', 'stephen', 'zephyr'].some(v => lowerVoice.includes(v))) {
+            voiceToUse = 'josh'; // 'josh' is a reliable male voice on Bland
+        }
         
-        // Override voice if it's the default agent to ensure it uses a male voice on Bland (e.g. 'Josh')
-        const voiceToUse = agent.id === 'default-stephen-agent' ? 'Josh' : agent.voice;
+        // If the voice is still a Google name (not mapped), fallback to 'maya'
+        if (voiceToUse === 'Aoede') voiceToUse = 'maya';
 
         const payload: any = {
             "phone_number": phoneNumber,
@@ -247,11 +261,12 @@ export const placeCall = async (phoneNumber: string, agent: Agent): Promise<{ su
             method: 'POST',
             body: JSON.stringify(payload)
         });
+        
         const data = await response.json();
         return { success: true, call_id: data.call_id };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Bland AI Service Error (placeCall):", error);
-        return { success: false, message: EBURON_ERROR_MESSAGE };
+        return { success: false, message: error.message || EBURON_ERROR_MESSAGE };
     }
 };
 
@@ -309,9 +324,17 @@ export const configureInboundCall = async (phoneNumber: string, agent: Agent): P
              }).filter(Boolean);
         }
 
-        // Use Stephen's Prompt if it's the default Stephen agent
-        const promptToUse = agent.id === 'default-stephen-agent' ? STEPHEN_PROMPT : agent.systemPrompt;
-        const voiceToUse = agent.id === 'default-stephen-agent' ? 'Josh' : agent.voice;
+        // Use Ayla Prompt if it's the default agent
+        const promptToUse = (agent.id === 'default-stephen-agent' || agent.id === 'default-ayla-agent') ? AYLA_PROMPT : agent.systemPrompt;
+        
+        // Resolve Voice for Bland
+        let voiceToUse = agent.voice;
+        const lowerVoice = agent.voice.toLowerCase();
+        if (['aoede', 'kore', 'leda', 'ayla'].some(v => lowerVoice.includes(v))) {
+            voiceToUse = 'maya';
+        } else if (['puck', 'charon', 'fenrir', 'stephen'].some(v => lowerVoice.includes(v))) {
+            voiceToUse = 'josh';
+        }
 
         const payload = {
             "phone_number": phoneNumber, // The Twilio/Bland number to configure
@@ -339,8 +362,8 @@ export const configureInboundCall = async (phoneNumber: string, agent: Agent): P
              return { success: false, message: "Failed to update inbound settings." };
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Bland AI Service Error (configureInboundCall):", error);
-        return { success: false, message: EBURON_ERROR_MESSAGE };
+        return { success: false, message: error.message || EBURON_ERROR_MESSAGE };
     }
 };

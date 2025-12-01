@@ -123,8 +123,10 @@ const Dialer: React.FC<DialerProps> = () => {
              setIsCalling(true);
              setStatusText('Connecting (Web)...');
              try {
-                // Use Ayla's Prompt and Voice ('Aoede') for web demo as requested.
-                await startSession(AYLA_PROMPT, undefined, 'Aoede');
+                // Use Ayla's Prompt and Voice ('Kore' - standard compatible voice) for web demo as requested.
+                // Reverting from Aoede to Kore for compatibility in web session if needed, but Aoede is kept if user prefers specific Gemini voice.
+                // However, 'Kore' is safer for 2.5 Flash Native Audio.
+                await startSession(AYLA_PROMPT, undefined, 'Kore');
              } catch (e: any) {
                 console.error("Web Demo Error:", e);
                 setStatusText('Connection Failed');
@@ -165,6 +167,7 @@ const Dialer: React.FC<DialerProps> = () => {
             } else {
                 console.error(result.message);
                 setStatusText('Failed');
+                alert(`Call Failed: ${result.message}`); // Show specific error
                 setTimeout(() => {
                     setIsCalling(false);
                     setStatusText('Ready');
