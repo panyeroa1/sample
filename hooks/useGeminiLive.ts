@@ -1,8 +1,9 @@
 
 import { useState, useRef, useCallback } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenaiBlob } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { LiveTranscript, ToolCallData } from '../types';
 import { dispatchAylaToolCall } from '../services/toolService';
+import { getConfig } from '../services/configService';
 
 // Audio Context configuration
 const AUDIO_SAMPLE_RATE = 16000;
@@ -126,7 +127,7 @@ export const useGeminiLiveAgent = () => {
         nextStartTimeRef.current = 0;
     }, []);
 
-    const startSession = useCallback(async (systemInstruction: string, tools?: any[], voiceName: string = 'Leda') => {
+    const startSession = useCallback(async (systemInstruction: string, tools?: any[], voiceName: string = 'Kore') => {
         if (isSessionActive || isConnecting) return;
 
         setIsConnecting(true);
@@ -136,9 +137,12 @@ export const useGeminiLiveAgent = () => {
         isMicrophonePaused.current = false;
 
         try {
-            const apiKey = process.env.API_KEY;
+            // Fetch API Key from Config Service (Support runtime updates)
+            const config = getConfig();
+            const apiKey = config.apiKeys.geminiApiKey || process.env.API_KEY;
+            
             if (!apiKey) {
-                throw new Error("Gemini API Key not found. Please ensure process.env.API_KEY is set.");
+                throw new Error("Gemini API Key not configured. Please add it in Admin Settings.");
             }
             
             aiRef.current = new GoogleGenAI({ apiKey });
@@ -151,6 +155,14 @@ export const useGeminiLiveAgent = () => {
             
             // Output context (playback) - Gemini usually returns 24kHz
             outputAudioContextRef.current = new AudioContextClass({ sampleRate: MODEL_SAMPLE_RATE });
+            
+            // Resume contexts if suspended (browser autoplay policy)
+            if (inputAudioContextRef.current.state === 'suspended') {
+                await inputAudioContextRef.current.resume();
+            }
+            if (outputAudioContextRef.current.state === 'suspended') {
+                await outputAudioContextRef.current.resume();
+            }
 
             // Get Microphone Stream
             const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -165,7 +177,7 @@ export const useGeminiLiveAgent = () => {
             mediaStreamRef.current = stream;
 
             // Gemini Session Config
-            const config: any = {
+            const sessionConfig: any = {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: { 
                     voiceConfig: { 
@@ -176,13 +188,13 @@ export const useGeminiLiveAgent = () => {
             };
             
             if (tools && tools.length > 0) {
-                config.tools = tools;
+                sessionConfig.tools = tools;
             }
 
             // Connect to Gemini Live
             sessionPromiseRef.current = aiRef.current.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-                config: config,
+                config: sessionConfig,
                 callbacks: {
                     onopen: () => {
                         console.log("Gemini Live Session Opened");
@@ -303,7 +315,9 @@ export const useGeminiLiveAgent = () => {
         } catch (e: any) {
             setError(`Failed to start session: ${e.message}`);
             console.error(e);
-            cleanup();
+            setIsConnecting(false);
+            setIsSessionActive(false);
+            // cleanup(); // Don't full cleanup here to allow reading error state
         }
     }, [isSessionActive, isConnecting, cleanup]);
 

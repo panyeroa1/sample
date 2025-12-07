@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PhoneIcon, BrainCircuitIcon, ToggleOnIcon, ToggleOffIcon } from './icons';
 import { placeCall } from '../services/blandAiService';
 import { getActiveDialerAgent } from '../services/dataService';
-import { STEPHEN_DEFAULT_AGENT, STEPHEN_PROMPT, AYLA_PROMPT } from '../constants';
+import { STEPHEN_DEFAULT_AGENT, AYLA_GEMINI_LIVE_PROMPT } from '../constants';
 import { Agent } from '../types';
 import { useGeminiLiveAgent } from '../hooks/useGeminiLive';
 
@@ -72,7 +72,7 @@ const Dialer: React.FC<DialerProps> = () => {
     
     // Web Demo State
     const [isWebDemo, setIsWebDemo] = useState(false);
-    const { startSession, endSession, isSessionActive, isConnecting: isWebConnecting } = useGeminiLiveAgent();
+    const { startSession, endSession, isSessionActive, isConnecting: isWebConnecting, error: webError } = useGeminiLiveAgent();
 
 
     useEffect(() => {
@@ -97,12 +97,16 @@ const Dialer: React.FC<DialerProps> = () => {
         } else if (isSessionActive) {
             setIsCalling(true);
             setStatusText('Live Session Active');
+        } else if (webError) {
+             setIsCalling(false);
+             setStatusText('Failed');
+             alert(`Web Demo Error: ${webError}`);
         } else if (!isSessionActive && !isWebConnecting && isCalling && isWebDemo) {
              // Reset if session ends abruptly from hook side
              setIsCalling(false);
              setStatusText('Ready');
         }
-    }, [isSessionActive, isWebConnecting, isWebDemo, isCalling]);
+    }, [isSessionActive, isWebConnecting, isWebDemo, isCalling, webError]);
 
 
     const handleDialpadInput = (char: string) => {
@@ -123,13 +127,12 @@ const Dialer: React.FC<DialerProps> = () => {
              setIsCalling(true);
              setStatusText('Connecting (Web)...');
              try {
-                // Use Ayla's Prompt and Voice ('Kore' - standard compatible voice) for web demo as requested.
-                // Reverting from Aoede to Kore for compatibility in web session if needed, but Aoede is kept if user prefers specific Gemini voice.
-                // However, 'Kore' is safer for 2.5 Flash Native Audio.
-                await startSession(AYLA_PROMPT, undefined, 'Kore');
+                // Use Ayla's LIVE Prompt (Breathy, detailed) and Voice 'Kore' for web demo.
+                await startSession(AYLA_GEMINI_LIVE_PROMPT, undefined, 'Kore');
              } catch (e: any) {
                 console.error("Web Demo Error:", e);
                 setStatusText('Connection Failed');
+                alert(`Failed to start Web Demo: ${e.message}`);
                 setIsCalling(false);
                 setTimeout(() => setStatusText('Ready'), 2000);
              }
