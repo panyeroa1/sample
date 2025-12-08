@@ -9,6 +9,3 @@ This enforcement is vital to ensure a unified and professional brand image. The 
 
 By enforcing this rule, we protect the integrity and recognition of the Eburon brand. Thank you for your attention to this detail and for ensuring that all front-end elements reflect this guideline.
 
----
-
-There you go! That’s your important notice in a nutshell. Let me know if you need any tweaks!
