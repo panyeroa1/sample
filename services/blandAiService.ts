@@ -7,6 +7,22 @@ const EBURON_ERROR_MESSAGE = "The Phone API service encountered an error. Please
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Fallback voices to ensure UI works even if API is blocked (e.g. CORS) or down
+const FALLBACK_VOICES: Voice[] = [
+    { id: 'maya', uuid: 'maya', name: 'Maya', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Female', 'Realistic'] },
+    { id: 'josh', uuid: 'josh', name: 'Josh', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Male', 'Deep'] },
+    { id: 'matt', uuid: 'matt', name: 'Matt', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Male', 'Conversational'] },
+    { id: '21m00Tcm4TlvDq8ikWAM', uuid: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Female', 'Calm'] },
+    { id: 'AZnzlk1XvdvUeBnXmlld', uuid: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Female', 'Strong'] },
+    { id: 'EXAVITQu4vr4xnSDxMaL', uuid: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Female', 'Soft'] },
+    { id: 'ErXwobaYiN019PkySvjV', uuid: 'ErXwobaYiN019PkySvjV', name: 'Antoni', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Male', 'Friendly'] },
+    { id: 'MF3mGyEYCl7XYWbV9V6O', uuid: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Female', 'Young'] },
+    { id: 'TxGEqnHWrfWFTfGW9XjX', uuid: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Male', 'Standard'] },
+    { id: 'VR6AewLTigWg4xSO09zZ', uuid: 'VR6AewLTigWg4xSO09zZ', name: 'Arnold', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Male', 'Distinctive'] },
+    { id: 'pNInz6obpgDQGcFmaJgB', uuid: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Male', 'Deep'] },
+    { id: 'yoZ06aMxZJJ28mfd3POQ', uuid: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam', provider: 'Eburon (Fallback)', type: 'Prebuilt', tags: ['English', 'Male', 'Student'] }
+];
+
 const getHeaders = (withEncryptedKey = true): HeadersInit => {
     const config = getConfig();
     const headers: any = {
@@ -163,8 +179,9 @@ export const listVoices = async (): Promise<Voice[]> => {
             };
         });
     } catch (error) {
-        console.error("Bland AI Service Error (listVoices):", error);
-        throw new Error(EBURON_ERROR_MESSAGE);
+        console.warn("Bland AI Service Error (listVoices):", error);
+        console.log("Returning fallback voice list due to API unavailability.");
+        return FALLBACK_VOICES;
     }
 };
 

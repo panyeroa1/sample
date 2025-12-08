@@ -157,11 +157,16 @@ export const useGeminiLiveAgent = () => {
             outputAudioContextRef.current = new AudioContextClass({ sampleRate: MODEL_SAMPLE_RATE });
             
             // Resume contexts if suspended (browser autoplay policy)
-            if (inputAudioContextRef.current.state === 'suspended') {
-                await inputAudioContextRef.current.resume();
-            }
-            if (outputAudioContextRef.current.state === 'suspended') {
-                await outputAudioContextRef.current.resume();
+            // CRITICAL FIX: Ensure audio context is active before starting session
+            try {
+                if (inputAudioContextRef.current.state === 'suspended') {
+                    await inputAudioContextRef.current.resume();
+                }
+                if (outputAudioContextRef.current.state === 'suspended') {
+                    await outputAudioContextRef.current.resume();
+                }
+            } catch (err) {
+                console.warn("Failed to resume audio contexts:", err);
             }
 
             // Get Microphone Stream

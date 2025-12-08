@@ -253,7 +253,17 @@ export async function upsertVoices(voices: Voice[]): Promise<void> {
 }
 
 export async function generateVoiceSample(voiceId: string, text: string, language: string): Promise<Blob> {
-    return blandAiService.generateVoiceSample(voiceId, text, language);
+    try {
+        return await blandAiService.generateVoiceSample(voiceId, text, language);
+    } catch (error) {
+        console.warn("Bland AI TTS failed, attempting fallback to Gemini TTS", error);
+        // Map common voices or default to 'Kore' if ID is unknown/unavailable
+        let geminiVoice = 'Kore';
+        if (voiceId.toLowerCase().includes('fenrir') || voiceId.toLowerCase().includes('male')) geminiVoice = 'Fenrir';
+        if (voiceId.toLowerCase().includes('aoede') || voiceId.toLowerCase().includes('female')) geminiVoice = 'Aoede';
+        
+        return geminiService.generateTtsWithGemini(text, geminiVoice);
+    }
 }
 
 export async function generateTtsWithGemini(text: string, voiceName: string = 'Kore'): Promise<Blob> {

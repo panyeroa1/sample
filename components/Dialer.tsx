@@ -100,7 +100,8 @@ const Dialer: React.FC<DialerProps> = () => {
         } else if (webError) {
              setIsCalling(false);
              setStatusText('Failed');
-             alert(`Web Demo Error: ${webError}`);
+             // Show specific error to user for better debugging
+             alert(`Web Demo Connection Error: ${webError}\n\nPlease check your API Key in Admin Settings.`);
         } else if (!isSessionActive && !isWebConnecting && isCalling && isWebDemo) {
              // Reset if session ends abruptly from hook side
              setIsCalling(false);
@@ -170,15 +171,16 @@ const Dialer: React.FC<DialerProps> = () => {
             } else {
                 console.error(result.message);
                 setStatusText('Failed');
-                alert(`Call Failed: ${result.message}`); // Show specific error
+                alert(`Call Dispatch Failed: ${result.message}\n\nCheck Bland AI API Key and phone number format.`); 
                 setTimeout(() => {
                     setIsCalling(false);
                     setStatusText('Ready');
                 }, 2000);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Failed to start call", e);
             setStatusText('Error');
+            alert(`Application Error: ${e.message}`);
             setTimeout(() => {
                 setIsCalling(false);
                 setStatusText('Ready');
